@@ -139,12 +139,6 @@ local gMathAbs = math.abs
 local gTypeDcl = gRemoteComm.types.DCL
 
 local Print = gRemoteComm.partialprint
-local PrintNumber = function (lNumber)
-    if gAccessors.mGetFormatData() == gAscii and lNumber >= 0 then
-        gRemoteComm.partialprint("+")
-    end
-    gRemoteComm.partialprintnumber(lNumber)
-end
 
 -- TODO Keep placing local variables here as needed
 local gMeasure = dmm.measure
@@ -158,7 +152,6 @@ local gRemoteCommStatus = gRemoteComm.status
 gAccessors.mSetMeasureFunction = makesetter(gMeasure, "func")
 gAccessors.mSetMeasureRange = makesetter(gMeasure, "range")
 gAccessors.mSetMeasureAutorange = makesetter(gMeasure, "autorange")
-gAccessors.mSetMeasureResolution = makesetter(gMeasure, "displaydigits")
 gAccessors.mSetThermistor = makesetter(gMeasure, "thermistor")
 gAccessors.mSetThermocouple = makesetter(gMeasure, "thermocouple")
 gAccessors.mSetDetectorBandwidth = makesetter(gMeasure, "detectorbandwidth")
@@ -170,7 +163,6 @@ gAccessors.mSetAutozeroEnable = makesetter(gMeasure.autozero, "enable")
 gAccessors.mGetMeasureFunction = makegetter(gMeasure, "func")
 gAccessors.mGetMeasureRange = makegetter(gMeasure, "range")
 gAccessors.mGetMeasureAutorange = makegetter(gMeasure, "autorange")
-gAccessors.mGetMeasureResolution = makegetter(gMeasure, "displaydigits")
 gAccessors.mGetThermistor = makegetter(gMeasure, "thermistor")
 gAccessors.mGetThermocouple = makegetter(gMeasure, "thermocouple")
 gAccessors.mGetDetectorBandwidth = makegetter(gMeasure, "detectorbandwidth")
@@ -178,6 +170,82 @@ gAccessors.mGetRelEnable = makegetter(gRel, "enable")
 gAccessors.mGetRelLevel = makegetter(gRel, "level")
 gAccessors.mGetMeasureNPLC = makegetter(gMeasure, "nplc")
 gAccessors.mGetAutozeroEnable = makegetter(gMeasure.autozero, "enable")
+
+local gInstrumentAttributes =
+{
+    Meas_Functions =
+    {
+        Voltage_DC = 
+        {
+            shorthand = "VOLT",
+            DMM_Enum = dmm.FUNC_DC_VOLTAGE
+        },
+        Voltage_AC = 
+        {
+            shorthand = "VOLT:AC",
+            DMM_Enum = dmm.FUNC_AC_VOLTAGE
+        },
+        Current_DC = 
+        {
+            shorthand = "CURR",
+            DMM_Enum = dmm.FUNC_DC_CURRENT
+        },
+        Current_AC = 
+        {
+            shorthand = "CURR:AC",
+            DMM_Enum = dmm.FUNC_AC_CURRENT
+        },
+        Temperature = 
+        {
+            shorthand = "TEMP",
+            DMM_Enum = dmm.FUNC_TEMPERATURE
+        },
+        Resistance = 
+        {
+            shorthand = "RES",
+            DMM_Enum = dmm.FUNC_RESISTANCE
+        },
+        Resistance_4W = 
+        {
+            shorthand = "FRES",
+            DMM_Enum = dmm.FUNC_4W_RESISTANCE
+        },
+        Diode = 
+        {
+            shorthand = "DIOD",
+            DMM_Enum = dmm.FUNC_DIODE
+        },
+        Capacitance = 
+        {
+            shorthand = "CAP",
+            DMM_Enum = dmm.FUNC_CAPACITANCE
+        },
+        Continuity = 
+        {
+            shorthand = "CONT",
+            DMM_Enum = dmm.FUNC_CONTINUITY
+        },
+        Frequency = 
+        {
+            shorthand = "FREQ",
+            DMM_Enum = dmm.FUNC_ACV_FREQUENCY
+        },
+        Period = 
+        {
+            shorthand = "PER",
+            DMM_Enum = dmm.FUNC_ACV_PERIOD
+        },
+        Ratio = 
+        {
+            shorthand = "VOLT:RAT",
+            DMM_Enum = dmm.FUNC_DCV_RATIO
+        },
+    },
+    Meas_Ranges =
+    {
+        DCVoltage = {100e-3, 1, 10, 100, 1000},
+    },
+}
 
 --============================================================================
 --
@@ -847,51 +915,35 @@ end
 gParserTable.mParseAny          = {mParse = gParserTable.ParseParameterAny}
 gParserTable.mParseNRf          = {mParse = gParserTable.ParseParameterNRf}
 gParserTable.mParseNRfOptional  = {mParse = gParserTable.ParseParameterNRf, mOptional = true}
-gParserTable.mParseCapacitanceRangeKeywords =
+gParserTable.mParseDCVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
-    mOptional = true,
     mNames =
     {
-        ["AUTO"]        = "AUTO",
-        ["MIN"]         = 1e-9,
-        ["MINIMUM"]     = 1e-9,
-        ["MAX"]         = 100e-6,
-        ["MAXIMUM"]     = 100e-6,
-        ["DEF"]         = "AUTO",
-        ["DEFAULT"]     = "AUTO",
+        ["MIN"]         = 100e-3,
+        ["MINIMUM"]     = 100e-3,
+        ["MAX"]         = 1000,
+        ["MAXIMUM"]     = 1000,
+        ["DEF"]         = 1000,
+        ["DEFAULT"]     = 1000,
     }
 }
-gParserTable.mParseCapacitanceRange =
+gParserTable.mParseDCVoltageRange =
 {
     mParse = gParserTable.ParseParameterChoice,
     mData =
     {
         gParserTable.mParseNRfOptional,
-        gParserTable.mParseCapacitanceRangeKeywords,
+        gParserTable.mParseDCVoltageRangeKeywords,
     }
 }
-gParserTable.mParseCapacitanceResolutionKeywords =
-{
+gParserTable.mParseDCVoltageAutorangeKeywords = {
     mParse = gParserTable.ParseParameterName,
-    mOptional = true,
     mNames =
     {
-        ["MIN"]         = dmm.DIGITS_4_5,
-        ["MINIMUM"]     = dmm.DIGITS_4_5,
-        ["MAX"]         = dmm.DIGITS_4_5,
-        ["MAXIMUM"]     = dmm.DIGITS_4_5,
-        ["DEF"]         = dmm.DIGITS_4_5,
-        ["DEFAULT"]     = dmm.DIGITS_4_5,
-    }
-}
-gParserTable.mParseCapacitanceResolution =
-{
-    mParse = gParserTable.ParseParameterChoice,
-    mData =
-    {
-        gParserTable.mParseNRfOptional,
-        gParserTable.mParseCapacitanceResolutionKeywords,
+        ["OFF"] = "OFF",
+        ["ON"] = "ON",
+        ["ONCE"] = "ONCE",
     }
 }
 
@@ -1663,10 +1715,6 @@ gCommandTree =
                         mCommand = {},
                     },
                 },
-                ["SECONDARY"] = {
-                    mQuery = {},
-                    mCommand = {},
-                },
             },
             ["DC"] =
             {
@@ -1703,24 +1751,6 @@ gCommandTree =
                         mCommand = {},
                     },
                 },
-                ["RATIO"] =
-                {
-                    ["SECONDARY"] =
-                    {
-                        mQuery = {},
-                        mCommand = {},
-                    }
-                },
-                ["RESOLUTION"] =
-                {
-                    mQuery = {},
-                    mCommand = {},
-                },
-                ["SECONDARY"] =
-                {
-                    mQuery = {},
-                    mCommand = {},
-                },
                 ["ZERO"] =
                 {
                     ["AUTO"] =
@@ -1738,6 +1768,89 @@ gCommandTree =
 gCommandTree["ABOR"] = gCommandTree["ABORT"]
 gCommandTree["CONF"] = gCommandTree["CONFIGURE"]
 
+gCommandTree["VOLTAGE"] = gCommandTree["SENSE"]["VOLTAGE"]
+gCommandTree["VOLT"] = gCommandTree["SENSE"]["VOLTAGE"]
+gCommandTree["SENS"] = gCommandTree["SENSE"]
+gCommandTree["SENSE"]["VOLT"] = gCommandTree["SENSE"]["VOLTAGE"]
+gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANG"] = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]
+
+local gStateVariables = 
+{
+    Measure_Function,
+
+    -- APPLIES TO ALL MEASUREMENT FUNCTIONS (pg. 243 manual)
+    
+    -- AC Input Filter          20Hz
+    -- Autozero                 OFF when NPLC < 1; ON otherwise
+    -- Range                    AUTO
+    -- Samples per Trigger      1
+    -- Trigger Count            1
+    -- Trigger Delay            Automatic
+    -- Trigger Source           Immediate
+    -- Trigger Slope            NEGative
+    -- Math Functions           Disabled, Other parameters unchanged
+    -- Per-function Null State  Disabled
+
+    -- DC VOLTAGE VARIABLES
+    DC_Voltage = 
+    {
+        Null_State,
+        Null_Value,
+        Null_Value_Auto,
+        Range,
+        Range_Auto,
+        Aperture,
+        Aperture_Enabled,
+        Impedance_Auto,
+        NPLC,
+        Zero_Auto
+    }
+}
+
+--============================================================================
+--
+-- Error Queue
+--
+-- The lErrors table contain Error number and Error Message of
+-- status and error messages, state of the error(Enabled/Disabled)
+--
+-- The functions below assist in adding the errors to the error queue
+-- and print the error codes and messages
+--
+-- mStatusBit = 15 is a dummy value and does not effect any
+-- stauts register bits. Any other mStatusBit value
+-- updates the Standard Event Status Register.
+--
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+ -- Global variable declarations
+ --[[
+        These variables are global to the Persona2400 script but are
+        local outside the script
+ --]]
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+-- General utility functions
+--[[
+    These functions are used at various places in the script
+--]]
+-----------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+-- Print functions
+--
+-- These functions are used to format and print data
+--
+-----------------------------------------------------------------------------
+local FormatNumber = function (lNumber, signed)
+    if signed then
+        return string.format("+%E", lNumber)
+    end
+    return string.format("%E", lNumber)
+end
+
 -- ADD COMMAND FUNCTIONALITY HERE
 
 -- ABORt
@@ -1749,84 +1862,109 @@ end
 -- CONFigure?
 gCurrentRoot = gCommandTree["CONFIGURE"]
 gCurrentRoot.mQuery.mExecute = function()
-    local lCurrentFunction = gAccessors.mGetMeasureFunction()
+    -- RESOLUTION NOT SUPPORTED CURRENTLY
     local lCurrentRange = gAccessors.mGetMeasureRange()
-    local lCurrentResolution = gAccessors.mGetMeasureResolution()
-    local lFunctions = 
-    {
-        dmm.FUNC_DC_VOLTAGE,
-        dmm.FUNC_AC_VOLTAGE,
-        dmm.FUNC_DC_CURRENT,
-        dmm.FUNC_AC_CURRENT,
-        dmm.FUNC_TEMPERATURE,
-        dmm.FUNC_RESISTANCE,
-        dmm.FUNC_4W_RESISTANCE,
-        dmm.FUNC_DIODE,
-        dmm.FUNC_CAPACITANCE,
-        dmm.FUNC_CONTINUITY,
-        dmm.FUNC_ACV_FREQUENCY,
-        dmm.FUNC_ACV_PERIOD,
-        dmm.FUNC_ACV_RATIO,
-    }
-    local lFunctionShorthands = {
-        "VOLT",
-        "VOLT:AC",
-        "CURR",
-        "CURR:AC",
-        "TEMP",
-        "RES",
-        "FRES",
-        "DIOD",
-        "CAP",
-        "CONT",
-        "FREQ",
-        "PER",
-        "VOLT:RAT",
-    }
-    for i = 1, table.getn(lFunctions) do
-        if lCurrentFunction == lFunctions[i] then
-            print(string.format("%s %e,%s", lFunctionShorthands[i], lCurrentRange,lCurrentResolution))
-        end
-    end
-    --print(lFunctionShorthands[lCurrentFunction])
+    print(
+        string.format(
+            "%s %s,%s", 
+            gStateVariables.Measure_Function.shorthand, 
+            FormatNumber(lCurrentRange, true),
+            "nil"
+        )
+    )
 end
--- CONFigure:CAPacitance [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
---[[
-gCurrentRoot = gCommandTree["CONFIGURE"]["CAPACITANCE"]
-gCurrentRoot.mCommand.mParameters = 
-{
-    gParserTable.mParseCapacitanceRange,
-    gParserTable.mParseCapacitanceResolution,
-}
+-- [SENSe:]VOLTage:DC:RANGe {<range>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    --RESET TO 
-    gAccessors.mSetMeasureFunction()
-    local lRange = lParameters[1]
-    if lRange then
-        if lRange == "AUTO" then
-            gAccessors.mSetMeasureAutorange(gOn)
-        else
-            if lRange >= gOperatingBoundaries.mMinimumCapacitanceRange and
-            lRange <= gOperatingBoundaries.mMaximumCapacitanceRange then
-                gAccessors.mSetMeasureRange(lRange)
-            else
-                --REPLACE RETURN WITH AN ERROR
-                return
-            end
+    local lMeasureRange = lParameters[1]
+    -- Turn autorange off
+    gAccessors.mSetMeasureAutorange(gOff)
+    gStateVariables.DC_Voltage.Range_Auto = "OFF"
+    -- Set the range
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
+        gAccessors.mSetMeasureRange(lMeasureRange)
+    end
+    for _, lRange in ipairs(gInstrumentAttributes.Meas_Ranges.DCVoltage) do
+        if gMathAbs(lMeasureRange) <= 1.10 * lRange then
+            gStateVariables.DC_Voltage.Range = lRange
+            return
         end
     end
 end
-]]
+-- [SENSe:]VOLTage:{AC|DC}:RANGe? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = 
+{
+    {
+        mParse = gParserTable.ParseParameterName,
+        mOptional = true,
+        mNames =
+        {
+            ["MIN"]         = 100e-3,
+            ["MINIMUM"]     = 100e-3,
+            ["MAX"]         = 1000,
+            ["MAXIMUM"]     = 1000,
+            ["DEF"]         = 1000,
+            ["DEFAULT"]     = 1000,
+        }
+    }
+}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintRange = lParameters[1]
+    if lPrintRange == nil then
+        lPrintRange = gStateVariables.DC_Voltage.Range
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintRange, true)
+        )
+    )
+end
+--[SENSe:]VOLTage:{AC|DC}:RANGe:AUTO {OFF|ON|ONCE}
+--gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"]
+--gCurrentRoot.mCommand.mParameters = gParserTable.mParseDCVoltageAutorangeKeywords
 
-function ResetScriptVariables()
-    -- PLACEHOLDER  
+
+------------------------------------------------------------------------------
+-- ResetDefaults()
+-- Sets the smu to 2400 reset defaults
+------------------------------------------------------------------------------
+
+ResetScriptVariables = function()
+    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.Voltage_DC
+
+    -- APPLY TO ALL MEASUREMENT FUNCTIONS
+
+    -- DC VOLTAGE VARIABLES
+    gStateVariables.DC_Voltage.Null_State = "OFF"
+    gStateVariables.DC_Voltage.Null_Value = 0
+    gStateVariables.DC_Voltage.Null_Value_Auto = "OFF"
+    gStateVariables.DC_Voltage.Range = 1000
+    gStateVariables.DC_Voltage.Range_Auto = "ON"
+    gStateVariables.DC_Voltage.Aperture = 100E-3
+    gStateVariables.DC_Voltage.Aperture_Enabled = "OFF"
+    gStateVariables.DC_Voltage.Impedance_Auto = "OFF"
+    gStateVariables.DC_Voltage.NPLC = 10
+    gStateVariables.DC_Voltage.Zero_Auto = "ON"
+    
+
+end
+
+ResetDMMSettings = function()
     reset()
+    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+end
+
+ResetDefaults = function ()
+    ResetScriptVariables()
+    ResetDMMSettings()
 end
 
 -- INITIALIZE HERE
 gCurrentRoot = gCommandTree
 
-ResetScriptVariables()
+ResetDefaults()
 
 Engine2400()
 
