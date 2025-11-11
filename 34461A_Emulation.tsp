@@ -12,8 +12,6 @@ local gDisplayVariables = {}
 gDisplayVariables.mDisplayScreen = display.SCREEN_HOME
 display.changescreen(display.SCREEN_USER_SWIPE)
 
---gDisplayVariables.mDisplayText1 = display.gettext(false, 1)
---gDisplayVariables.mDisplayText2 = display.gettext(false, 2)
 -- Loading Message
 display.clear()
 if gModelSupport[localnode.model] then
@@ -31,7 +29,8 @@ end
 local FwRev = localnode.version
 local gAutoRunEnable = false
 local gInitialized = false
-local gDisplayErrors = false
+local gDisplayErrors = true
+local gErrorReadback = true
 local gCommandTree
 local gErrorQueue = {}
 
@@ -151,50 +150,60 @@ local gPLC = 60
 local gRemoteCommStatus = gRemoteComm.status
 
 -- TODO Keep placing getter/setter functions here
-gAccessors.mSetMeasureFunction = makesetter(gMeasure, "func")
-gAccessors.mSetMeasureRange = makesetter(gMeasure, "range")
-gAccessors.mSetMeasureAutorange = makesetter(gMeasure, "autorange")
-gAccessors.mSetMeasureCount = makesetter(gMeasure, "count")
-gAccessors.mSetThermistor = makesetter(gMeasure, "thermistor")
-gAccessors.mSetThermocouple = makesetter(gMeasure, "thermocouple")
-gAccessors.mSetDetectorBandwidth = makesetter(gMeasure, "detectorbandwidth")
-gAccessors.mSetRelEnable = makesetter(gRel, "enable")
-gAccessors.mSetRelLevel = makesetter(gRel, "level")
-gAccessors.mSetMeasureNPLC = makesetter(gMeasure, "nplc")
-gAccessors.mSetAutozeroEnable = makesetter(gMeasure.autozero, "enable")
+gAccessors.mSetMeasureFunction      = makesetter(gMeasure, "func")
+gAccessors.mSetMeasureRange         = makesetter(gMeasure, "range")
+gAccessors.mSetMeasureAutorange     = makesetter(gMeasure, "autorange")
+gAccessors.mSetMeasureCount         = makesetter(gMeasure, "count")
+gAccessors.mSetThermistor           = makesetter(gMeasure, "thermistor")
+gAccessors.mSetThermocouple         = makesetter(gMeasure, "thermocouple")
+gAccessors.mSetDetectorBandwidth    = makesetter(gMeasure, "detectorbandwidth")
+gAccessors.mSetRelEnable            = makesetter(gRel, "enable")
+gAccessors.mSetRelLevel             = makesetter(gRel, "level")
+gAccessors.mSetMeasureNPLC          = makesetter(gMeasure, "nplc")
+gAccessors.mSetAutozeroEnable       = makesetter(gMeasure.autozero, "enable")
 
-gAccessors.mGetMeasureFunction = makegetter(gMeasure, "func")
-gAccessors.mGetMeasureRange = makegetter(gMeasure, "range")
-gAccessors.mGetMeasureAutorange = makegetter(gMeasure, "autorange")
-gAccessors.mGetMeasureCount = makegetter(gMeasure, "count")
-gAccessors.mGetThermistor = makegetter(gMeasure, "thermistor")
-gAccessors.mGetThermocouple = makegetter(gMeasure, "thermocouple")
-gAccessors.mGetDetectorBandwidth = makegetter(gMeasure, "detectorbandwidth")
-gAccessors.mGetRelEnable = makegetter(gRel, "enable")
-gAccessors.mGetRelLevel = makegetter(gRel, "level")
-gAccessors.mGetMeasureNPLC = makegetter(gMeasure, "nplc")
-gAccessors.mGetAutozeroEnable = makegetter(gMeasure.autozero, "enable")
+gAccessors.mGetMeasureFunction      = makegetter(gMeasure, "func")
+gAccessors.mGetMeasureRange         = makegetter(gMeasure, "range")
+gAccessors.mGetMeasureAutorange     = makegetter(gMeasure, "autorange")
+gAccessors.mGetMeasureCount         = makegetter(gMeasure, "count")
+gAccessors.mGetThermistor           = makegetter(gMeasure, "thermistor")
+gAccessors.mGetThermocouple         = makegetter(gMeasure, "thermocouple")
+gAccessors.mGetDetectorBandwidth    = makegetter(gMeasure, "detectorbandwidth")
+gAccessors.mGetRelEnable            = makegetter(gRel, "enable")
+gAccessors.mGetRelLevel             = makegetter(gRel, "level")
+gAccessors.mGetMeasureNPLC          = makegetter(gMeasure, "nplc")
+gAccessors.mGetAutozeroEnable       = makegetter(gMeasure.autozero, "enable")
+
+--============================================================================
+--
+-- Model specific tables
+--
+-- These tables store model specific range related information.
+--
+--============================================================================
+
+local gPrintEnable = false
 
 local gInstrumentAttributes =
 {
     Meas_Functions =
     {
-        Voltage_DC = 
+        DC_Voltage = 
         {
             shorthand = "VOLT",
             DMM_Enum = dmm.FUNC_DC_VOLTAGE
         },
-        Voltage_AC = 
+        AC_Voltage = 
         {
             shorthand = "VOLT:AC",
             DMM_Enum = dmm.FUNC_AC_VOLTAGE
         },
-        Current_DC = 
+        DC_Current = 
         {
             shorthand = "CURR",
             DMM_Enum = dmm.FUNC_DC_CURRENT
         },
-        Current_AC = 
+        AC_Current = 
         {
             shorthand = "CURR:AC",
             DMM_Enum = dmm.FUNC_AC_CURRENT
@@ -209,7 +218,7 @@ local gInstrumentAttributes =
             shorthand = "RES",
             DMM_Enum = dmm.FUNC_RESISTANCE
         },
-        Resistance_4W = 
+        FW_Resistance = 
         {
             shorthand = "FRES",
             DMM_Enum = dmm.FUNC_4W_RESISTANCE
@@ -256,10 +265,6 @@ local gInstrumentAttributes =
             shorthand = 0,
         },
     },
-    Meas_Ranges =
-    {
-        Voltage = {100e-3, 1, 10, 100, 1000},
-    },
     Detector_Bandwidth =
     {
         HZ3 = 
@@ -280,36 +285,189 @@ local gInstrumentAttributes =
     },
 }
 
---============================================================================
---
--- Model specific tables
---
--- These tables store model specific range related information.
---
---============================================================================
+local gRangeTable =
+{
+    DC_Voltage      = {100e-3, 1, 10, 100, 1000},
+    AC_Voltage      = {100e-3, 1, 10, 100, 750},
+    DC_Current      = {10e-6, 100e-6, 1e-3, 10e-3, 100e-3, 1, 3, 10},
+    AC_Current      = {1e-3, 10e-3, 100e-3, 1, 3, 10},
+    Resistance      = {10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
+    FW_Resistance   = {1, 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
+    Continuity      = {1e3},
+    Diode           = {10},
+    Capacitance     = {1e-9, 10e-9, 100e-9, 1e-6, 10e-6, 100e-6, 1e-3},
+    Ratio           = {100e-3, 1, 10, 100, 1000}
+}
 
-local gOperatingBoundaries
-local gSafeOperatingArea
-local gRangeTable
-local gPrintEnable = false
-
---TODO Change this to match 2600
-if localnode.model == "DMM6500" then
-
-    gOperatingBoundaries =
+local gOperatingBoundaries =
+{
+    DC_Voltage =
     {
-        mMinimumCapacitanceRange = 1e-9,
-        mMaximumCapacitanceRange = 100e-6,
-    }
-
-    gRangeTable =
+        Range =
+        {
+            -- Values fully compatible, default same as 34461
+            max = 1000,
+            def = 1000,
+            min = 100e-3
+        },
+        Null =
+        {
+            -- Max/min limited by 6500
+            max = 1000,
+            def = 0,
+            min = -1000
+        },
+    },
+    AC_Voltage =
     {
-       mCapacitance = {1e-9, 10e-9, 100e-9, 1e-6, 10e-6, 100e-6},
+        Range =
+        {
+            -- Max limited by 6500, default same as 34461
+            max = 750,
+            def = 10,
+            min = 100e-3
+        },
+        Null =
+        {
+            -- Max/min limited by 6500
+            max = 750,
+            def = 0,
+            min = -750
+        },
+        Bandwidth =
+        {
+            max = 300,
+            def = 30,
+            min = 3
+        },
+    },
+    General =
+    {
+        Nplc =
+        {
+            -- NPLC handled better on 6500, defaults from 34461
+            max = 12,
+            def = 10,
+            min = 0.0005
+        }
+    },
+}
+if gPLC == 60 then
+    gOperatingBoundaries.General.Nplc = 
+    {
+        max = 15,
+        def = 10,
+        min = 0.0005
     }
-
-    --gSafeOperatingArea = {mVoltage = 20, mCurrent = .1}
 end
 
+local gStateVariables = 
+{
+    Measure_Function,
+
+    -- APPLIES TO ALL MEASUREMENT FUNCTIONS (pg. 243 manual)
+    
+    -- AC Input Filter          20Hz
+    -- Autozero                 OFF when NPLC < 1; ON otherwise
+    -- Range                    AUTO
+    -- Samples per Trigger      1
+    -- Trigger Count            1
+    -- Trigger Delay            Automatic
+    -- Trigger Source           Immediate
+    -- Trigger Slope            NEGative
+    -- Math Functions           Disabled, Other parameters unchanged
+    -- Per-function Null State  Disabled
+
+    -- DC VOLTAGE VARIABLES
+    DC_Voltage = 
+    {
+        Null_State,
+        Null_Value,
+        Null_Value_Auto,
+        Range,
+        Range_Auto,
+        Aperture,
+        Aperture_Enabled,
+        Impedance_Auto,
+        NPLC,
+        Zero_Auto,
+    },
+    AC_Voltage =
+    {
+        Bandwidth,
+        Null_State,
+        Null_Value,
+        Null_Value_Auto,
+        Range,
+        Range_Auto,
+    },
+}
+
+------------------------------------------------------------------------------
+-- ResetDefaults()
+-- Sets the smu to 2400 reset defaults
+------------------------------------------------------------------------------
+
+local gResetFunctionVariables = {
+    -- APPLY TO ALL MEASUREMENT FUNCTIONS
+    ResetDCVoltage = function()
+        -- DC VOLTAGE VARIABLES
+        gStateVariables.DC_Voltage.Null_State       = gInstrumentAttributes.OnOff.OFF
+        gStateVariables.DC_Voltage.Null_Value       = 0
+        gStateVariables.DC_Voltage.Null_Value_Auto  = gInstrumentAttributes.OnOff.OFF
+        gStateVariables.DC_Voltage.Range            = 1000
+        gStateVariables.DC_Voltage.Range_Auto       = gInstrumentAttributes.OnOff.ON
+        gStateVariables.DC_Voltage.Aperture         = 100E-3
+        gStateVariables.DC_Voltage.Aperture_Enabled = gInstrumentAttributes.OnOff.OFF
+        gStateVariables.DC_Voltage.Impedance_Auto   = gInstrumentAttributes.OnOff.OFF
+        gStateVariables.DC_Voltage.NPLC             = 10
+        gStateVariables.DC_Voltage.Zero_Auto        = gInstrumentAttributes.OnOff.ON
+    end,
+    ResetACVoltage = function()
+        -- AC VOLTAGE VARIABLES
+        gStateVariables.AC_Voltage.Bandwidth        = gInstrumentAttributes.Detector_Bandwidth.HZ30
+        gStateVariables.AC_Voltage.Null_State       = gInstrumentAttributes.OnOff.OFF
+        gStateVariables.AC_Voltage.Null_Value       = 0
+        gStateVariables.AC_Voltage.Null_Value_Auto  = gInstrumentAttributes.OnOff.OFF
+        gStateVariables.AC_Voltage.Range            = 10
+        gStateVariables.AC_Voltage.Range_Auto       = gInstrumentAttributes.OnOff.ON
+    end,
+}
+
+local ResetScriptVariables = function()
+        gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.DC_Voltage
+        gResetFunctionVariables.ResetDCVoltage()
+        gResetFunctionVariables.ResetACVoltage()
+end
+
+local gSetFunctionAttributes = 
+{
+    SetDCVoltage = function()
+        gAccessors.mSetRelEnable(gStateVariables.DC_Voltage.Null_State.DMM_Enum)
+        gAccessors.mSetRelLevel(gStateVariables.DC_Voltage.Null_Value)
+        gAccessors.mSetMeasureRange(gStateVariables.DC_Voltage.Range)
+        gAccessors.mSetMeasureAutorange(gStateVariables.DC_Voltage.Range_Auto.DMM_Enum)
+        gAccessors.mSetMeasureNPLC(gStateVariables.DC_Voltage.NPLC)
+        gAccessors.mSetAutozeroEnable(gStateVariables.DC_Voltage.Zero_Auto.DMM_Enum)
+    end,
+    SetACVoltage = function()
+        gAccessors.mSetDetectorBandwidth(gStateVariables.AC_Voltage.Bandwidth.DMM_Enum)
+        gAccessors.mSetRelEnable(gStateVariables.AC_Voltage.Null_State.DMM_Enum)
+        gAccessors.mSetRelLevel(gStateVariables.AC_Voltage.Null_Value)
+        gAccessors.mSetMeasureRange(gStateVariables.AC_Voltage.Range)
+        gAccessors.mSetMeasureAutorange(gStateVariables.AC_Voltage.Range_Auto.DMM_Enum)
+    end,
+}
+
+local ResetDMMSettings = function()
+    reset()
+    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+end
+
+ResetDefaults = function ()
+    ResetScriptVariables()
+    ResetDMMSettings()
+end
 
 --============================================================================
 --
@@ -704,7 +862,7 @@ gParserTable.ParseParameterBoolean = function (lParameter)
     elseif lParameter == "OFF" then
         return false
     end
-    return nil, -104
+    return nil, -224
 end
 
 ------------------------------------------------------------------------------
@@ -721,12 +879,15 @@ gParserTable.ParseParameterChoice = function (lParameter, lParseData)
     lIndex = 1
     while lParseData[lIndex] do
         lValue, lError = lParseData[lIndex].mParse(lParameter, lParseData[lIndex])
+        if lError then
+            return nil, lError
+        end
         if lValue ~= nil then
             return lValue
         end
         lIndex = lIndex + 1
     end
-    return nil, -102
+    return nil, -224
 end
 
 ------------------------------------------------------------------------------
@@ -749,12 +910,18 @@ end
 ------------------------------------------------------------------------------
 
 gParserTable.ParseParameterName = function (lParameter, lParseData)
-    lParameter = lParseData.mNames[lParameter]
+    local lParameterKey = lParseData.mNames[lParameter]
 
-    if lParameter then
-        return lParameter
+    if lParameterKey then
+        return lParameterKey
     else
-        return nil, -102
+        local lCharCode = string.byte(lParameter, 1)
+        if lCharCode >= gCharCodes.mZero and lCharCode <= gCharCodes.mNine then
+            -- If Parameter is wrong type, only accounting for number, others should eventually be accounted for (expression etc.)
+            return nil, -108
+        else
+            return nil, -224
+        end
     end
 end
 
@@ -945,30 +1112,23 @@ end
 --
 ------------------------------------------------------------------------------
 
-gParserTable.mParseAny          = {mParse = gParserTable.ParseParameterAny}
+gParserTable.mParseAny          = {mParse = gParserTable.ParseParameterAny, mOptional = true}
 gParserTable.mParseNRf          = {mParse = gParserTable.ParseParameterNRf}
 gParserTable.mParseNRfOptional  = {mParse = gParserTable.ParseParameterNRf, mOptional = true}
-gParserTable.mParseBooleanKeywords = {
-    mParse = gParserTable.ParseParameterName,
-    mNames =
-    {
-        ["OFF"]     = 0,
-        ["0"]       = 0,
-        ["ON"]      = 1,
-        ["1"]       = 1,
-    }
-}
+gParserTable.mParseBooleanKeywords = {mParse = gParserTable.ParseParameterBoolean}
+
 gParserTable.mParseDCVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
+    mOptional = true,
     mNames =
     {
-        ["MIN"]         = 100e-3,
-        ["MINIMUM"]     = 100e-3,
-        ["MAX"]         = 1000,
-        ["MAXIMUM"]     = 1000,
-        ["DEF"]         = 1000,
-        ["DEFAULT"]     = 1000,
+        ["MIN"]         = gOperatingBoundaries.DC_Voltage.Range.min,
+        ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.min,
+        ["MAX"]         = gOperatingBoundaries.DC_Voltage.Range.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.max,
+        ["DEF"]         = gOperatingBoundaries.DC_Voltage.Range.def,
+        ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Range.def,
     }
 }
 gParserTable.mParseDCVoltageRange =
@@ -980,28 +1140,30 @@ gParserTable.mParseDCVoltageRange =
         gParserTable.mParseDCVoltageRangeKeywords,
     }
 }
-gParserTable.mParseVoltageAutorangeKeywords = {
-    mParse = gParserTable.ParseParameterName,
-    mNames =
+gParserTable.mParseVoltageAutoOnceKeywords = 
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
     {
-        ["OFF"]     = "OFF",
-        ["0"]       = "OFF",
-        ["ON"]      = "ON",
-        ["1"]       = "ON",
-        ["ONCE"]    = "ONCE",
+        gParserTable.mParseBooleanKeywords,
+        {
+            mParse = gParserTable.ParseParameterName,
+            mNames = {["ONCE"] = "ONCE"}
+        }
     }
 }
 gParserTable.mParseACVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
+    mOptional = true,
     mNames =
     {
-        ["MIN"]         = 100e-3,
-        ["MINIMUM"]     = 100e-3,
-        ["MAX"]         = 1000,
-        ["MAXIMUM"]     = 1000,
-        ["DEF"]         = 10,
-        ["DEFAULT"]     = 10,
+        ["MIN"]         = gOperatingBoundaries.AC_Voltage.Range.min,
+        ["MINIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.min,
+        ["MAX"]         = gOperatingBoundaries.AC_Voltage.Range.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.max,
+        ["DEF"]         = gOperatingBoundaries.AC_Voltage.Range.def,
+        ["DEFAULT"]     = gOperatingBoundaries.AC_Voltage.Range.def,
     }
 }
 gParserTable.mParseACVoltageRange =
@@ -1013,67 +1175,66 @@ gParserTable.mParseACVoltageRange =
         gParserTable.mParseACVoltageRangeKeywords,
     }
 }
-gParserTable.mParseNullValueKeywords =
+gParserTable.mParseDCVNullValueKeywords =
 {
     mParse = gParserTable.ParseParameterName,
+    mOptional = true,
     mNames =
     {
-        ["MIN"]         = -1000,
-        ["MINIMUM"]     = -1000,
-        ["MAX"]         = 1000,
-        ["MAXIMUM"]     = 1000,
-        ["DEF"]         = 0,
-        ["DEFAULT"]     = 0,
+        ["MIN"]         = gOperatingBoundaries.DC_Voltage.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Null.min,
+        ["MAX"]         = gOperatingBoundaries.DC_Voltage.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Null.max,
+        ["DEF"]         = gOperatingBoundaries.DC_Voltage.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Null.def,
     }
 }
-gParserTable.mParseNullValue =
+gParserTable.mParseDCVNullValue =
 {
     mParse = gParserTable.ParseParameterChoice,
     mData =
     {
         gParserTable.mParseNRf,
-        gParserTable.mParseNullValueKeywords,
+        gParserTable.mParseDCVNullValueKeywords,
     }
 }
-gParserTable.mParseNullValueKeywords =
+gParserTable.mParseACVNullValueKeywords =
 {
     mParse = gParserTable.ParseParameterName,
+    mOptional = true,
     mNames =
     {
-        ["MIN"]         = -1000,
-        ["MINIMUM"]     = -1000,
-        ["MAX"]         = 1000,
-        ["MAXIMUM"]     = 1000,
-        ["DEF"]         = 0,
-        ["DEFAULT"]     = 0,
+        ["MIN"]         = gOperatingBoundaries.AC_Voltage.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.AC_Voltage.Null.min,
+        ["MAX"]         = gOperatingBoundaries.AC_Voltage.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.AC_Voltage.Null.max,
+        ["DEF"]         = gOperatingBoundaries.AC_Voltage.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.AC_Voltage.Null.def,
     }
 }
-gParserTable.mParseNullValue =
+gParserTable.mParseACVNullValue =
 {
     mParse = gParserTable.ParseParameterChoice,
     mData =
     {
         gParserTable.mParseNRf,
-        gParserTable.mParseNullValueKeywords,
+        gParserTable.mParseACVNullValueKeywords,
     }
 }
 gParserTable.mParseNPLCKeywords =
 {
     mParse = gParserTable.ParseParameterName,
+    mOptional = true,
     mNames =
     {
-        ["MIN"]         = 0.0005,
-        ["MINIMUM"]     = 0.0005,
-        ["MAX"]         = 12,
-        ["MAXIMUM"]     = 12,
-        ["DEF"]         = 10,
-        ["DEFAULT"]     = 10,
-    }   
+        ["MIN"]         = gOperatingBoundaries.General.Nplc.min,
+        ["MINIMUM"]     = gOperatingBoundaries.General.Nplc.min,
+        ["MAX"]         = gOperatingBoundaries.General.Nplc.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.General.Nplc.max,
+        ["DEF"]         = gOperatingBoundaries.General.Nplc.def,
+        ["DEFAULT"]     = gOperatingBoundaries.General.Nplc.def,
+    }
 }
-if gPLC == 60 then
-    gParserTable.mParseNPLCKeywords.mNames["MAX"] = 15
-    gParserTable.mParseNPLCKeywords.mNames["MAXIMUM"] = 15
-end
 gParserTable.mParseNPLC =
 {
     mParse = gParserTable.ParseParameterChoice,
@@ -1081,6 +1242,29 @@ gParserTable.mParseNPLC =
     {
         gParserTable.mParseNRf,
         gParserTable.mParseNPLCKeywords,
+    }
+}
+gParserTable.mParseBandwidthKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.AC_Voltage.Bandwidth.min,
+        ["MINIMUM"]     = gOperatingBoundaries.AC_Voltage.Bandwidth.min,
+        ["MAX"]         = gOperatingBoundaries.AC_Voltage.Bandwidth.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.AC_Voltage.Bandwidth.max,
+        ["DEF"]         = gOperatingBoundaries.AC_Voltage.Bandwidth.def,
+        ["DEFAULT"]     = gOperatingBoundaries.AC_Voltage.Bandwidth.def,
+    }
+}
+gParserTable.mParseBandwidth =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseBandwidthKeywords
     }
 }
 
@@ -1303,7 +1487,7 @@ Parse4882 = function (lTextMixedCase, lText, lStart)
                         else
                             lIndex2, lIndex3 = string.find(lText, "^%s*$", lIndex)
                             if not lIndex2 then
-                               --gErrorQueue.Add(-170)
+                               gErrorQueue.Add(-170)
                             end
                             lIndex = lLength + 1
                         end
@@ -1502,9 +1686,6 @@ end
 -----------------------------------------------------------------------------
 
 local Init = {}
-local ResetDefaults
-local ResetScriptVariables
-local ResetSmuSettings
 
 ------------------------------------------------------------------------------
 --
@@ -1536,10 +1717,10 @@ local ExecuteCommand  = function (lParseInfo)
     if lParseInfo.mError then
         if type(lParseInfo.mError) == "table" then
             for lIndex, lError in ipairs(lParseInfo.mError) do
-                --gErrorQueue.Add(lError)
+                gErrorQueue.Add(lError)
             end
         else
-            --gErrorQueue.Add(lParseInfo.mError)
+            gErrorQueue.Add(lParseInfo.mError)
         end
     elseif lParseInfo.mCommand then
         lParseInfo.mCommand.mExecute(lParseInfo.mParameters)
@@ -1685,6 +1866,10 @@ gCommandTree =
     ["CONFIGURE"] =
     {
         mQuery = {},
+        ["AC"] =
+        {
+            mCommand = {},
+        },
         ["CAPACITANCE"] =
         {
             mCommand = {},
@@ -1703,6 +1888,10 @@ gCommandTree =
             {
                 mCommand = {},
             },
+        },
+        ["DC"] =
+        {
+            mCommand = {},
         },
         ["DIODE"] =
         {
@@ -1737,10 +1926,6 @@ gCommandTree =
             ["DC"] =
             {
                 mCommand = {},
-                ["RATIO"] =
-                {
-                    mCommand = {},
-                },
             },
         },
     },
@@ -1916,6 +2101,11 @@ gCommandTree =
 -- ADD ABBREVIATION ALIASES HERE
 gCommandTree["ABOR"] = gCommandTree["ABORT"]
 gCommandTree["CONF"] = gCommandTree["CONFIGURE"]
+gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"] = gCommandTree["CONFIGURE"]["DC"]
+gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"] = gCommandTree["CONFIGURE"]["AC"]
+gCommandTree["CONFIGURE"]["VOLT"] = gCommandTree["CONFIGURE"]["VOLTAGE"]
+gCommandTree["CONFIGURE"]["VOLT"] = gCommandTree["CONFIGURE"]["VOLTAGE"]
+
 
 gCommandTree["SENS"]                                    = gCommandTree["SENSE"]
 gCommandTree["VOLTAGE"]                                 = gCommandTree["SENSE"]["VOLTAGE"]
@@ -1931,48 +2121,6 @@ gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VAL"]   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NPLC"]          = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["ZERO"]["AUTO"]  = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
 
-local gStateVariables = 
-{
-    Measure_Function,
-
-    -- APPLIES TO ALL MEASUREMENT FUNCTIONS (pg. 243 manual)
-    
-    -- AC Input Filter          20Hz
-    -- Autozero                 OFF when NPLC < 1; ON otherwise
-    -- Range                    AUTO
-    -- Samples per Trigger      1
-    -- Trigger Count            1
-    -- Trigger Delay            Automatic
-    -- Trigger Source           Immediate
-    -- Trigger Slope            NEGative
-    -- Math Functions           Disabled, Other parameters unchanged
-    -- Per-function Null State  Disabled
-
-    -- DC VOLTAGE VARIABLES
-    DC_Voltage = 
-    {
-        Null_State,
-        Null_Value,
-        Null_Value_Auto,
-        Range,
-        Range_Auto,
-        Aperture,
-        Aperture_Enabled,
-        Impedance_Auto,
-        NPLC,
-        Zero_Auto,
-    },
-    AC_Voltage =
-    {
-        Bandwidth,
-        Null_State,
-        Null_Value,
-        Null_Value_Auto,
-        Range,
-        Range_Auto,
-    },
-}
-
 --============================================================================
 --
 -- Error Queue
@@ -1984,10 +2132,449 @@ local gStateVariables =
 -- and print the error codes and messages
 --
 -- mStatusBit = 15 is a dummy value and does not effect any
--- stauts register bits. Any other mStatusBit value
+-- status register bits. Any other mStatusBit value
 -- updates the Standard Event Status Register.
 --
 ------------------------------------------------------------------------------
+
+local lErrors =
+{
+    -- Error Events
+    [-440] = {mState = true, mCode = "-440", mStatusBit = 2, mMessage = '-440,"Query UNTERMINATED after indefinite response"' },
+    [-430] = {mState = true, mCode = "-430", mStatusBit = 2, mMessage = '-430,"Query DEADLOCKED"' },
+    [-420] = {mState = true, mCode = "-420", mStatusBit = 2, mMessage = '-420,"Query UNTERMINATED"' },
+    [-410] = {mState = true, mCode = "-410", mStatusBit = 2, mMessage = '-410,"Query INTERRUPTED"' },
+    [-363] = {mState = true, mCode = "-363", mStatusBit = 3, mMessage = '-363,"Input buffer overrun"' },
+    [-362] = {mState = true, mCode = "-362", mStatusBit = 3, mMessage = '-362,"Framing error in program message"' },
+    [-361] = {mState = true, mCode = "-361", mStatusBit = 3, mMessage = '-361,"Parity error in program message"' },
+    [-360] = {mState = true, mCode = "-360", mStatusBit = 3, mMessage = '-360,"Communications error"' },
+    [-350] = {mState = true, mCode = "-350", mStatusBit = 3, mMessage = '-350,"Queue overflow"' },
+
+    [-330] = {mState = true, mCode = "-330", mStatusBit = 3, mMessage = '-330,"Self-test failed"' },
+    [-314] = {mState = true, mCode = "-314", mStatusBit = 3, mMessage = '-314,"Save/recall memory lost"' },
+    [-315] = {mState = true, mCode = "-315", mStatusBit = 3, mMessage = '-315,"Configuration memory lost"' },
+    [-285] = {mState = true, mCode = "-285", mStatusBit = 4, mMessage = '-285,"Program syntax error"' },
+    [-284] = {mState = true, mCode = "-284", mStatusBit = 4, mMessage = '-284,"Program currently running"' },
+    [-282] = {mState = true, mCode = "-282", mStatusBit = 4, mMessage = '-282,"Illegal program name"' },
+    [-281] = {mState = true, mCode = "-281", mStatusBit = 4, mMessage = '-281,"Cannot create program"' },
+    [-260] = {mState = true, mCode = "-260", mStatusBit = 4, mMessage = '-260,"Expression error"' },
+    [-241] = {mState = true, mCode = "-241", mStatusBit = 4, mMessage = '-241,"Hardware missing"' },
+    [-230] = {mState = true, mCode = "-230", mStatusBit = 4, mMessage = '-230,"Data corrupt or stale"' },
+
+    [-225] = {mState = true, mCode = "-225", mStatusBit = 4, mMessage = '-225,"Out of memory"' },
+    [-224] = {mState = true, mCode = "-224", mStatusBit = 4, mMessage = '-224,"Illegal parameter value"' },
+    [-223] = {mState = true, mCode = "-223", mStatusBit = 4, mMessage = '-223,"Too much data"' },
+    [-222] = {mState = true, mCode = "-222", mStatusBit = 4, mMessage = '-222,"Data out of range"' }, --* Changed to match 34461
+    [-221] = {mState = true, mCode = "-221", mStatusBit = 4, mMessage = '-221,"Settings conflict"' },
+    [-220] = {mState = true, mCode = "-220", mStatusBit = 4, mMessage = '-220,"Parameter error"' },
+
+    [-215] = {mState = true, mCode = "-215", mStatusBit = 4, mMessage = '-215,"Arm deadlock"' },
+    [-214] = {mState = true, mCode = "-214", mStatusBit = 4, mMessage = '-214,"Trigger deadlock"' },
+    [-213] = {mState = true, mCode = "-213", mStatusBit = 4, mMessage = '-213,"Init ignored"' },
+    [-212] = {mState = true, mCode = "-212", mStatusBit = 4, mMessage = '-212,"Arm ignored"' },
+    [-211] = {mState = true, mCode = "-211", mStatusBit = 4, mMessage = '-211,"Trigger ignored"' },
+    [-210] = {mState = true, mCode = "-210", mStatusBit = 4, mMessage = '-210,"Trigger error"' },
+    [-202] = {mState = true, mCode = "-202", mStatusBit = 4, mMessage = '-202,"Settings lost due to rtl"' },
+    [-201] = {mState = true, mCode = "-201", mStatusBit = 4, mMessage = '-201,"Invalid while in local"' },
+    [-200] = {mState = true, mCode = "-200", mStatusBit = 4, mMessage = '-200,"Execution error"' },
+    [-178] = {mState = true, mCode = "-178", mStatusBit = 5, mMessage = '-178,"Expression data not allowed"' },
+    [-171] = {mState = true, mCode = "-171", mStatusBit = 5, mMessage = '-171,"Invalid expression"' },
+    [-170] = {mState = true, mCode = "-170", mStatusBit = 5, mMessage = '-170,"Expression error"' },
+    [-168] = {mState = true, mCode = "-168", mStatusBit = 5, mMessage = '-168,"Block data not allowed"' },
+    [-161] = {mState = true, mCode = "-161", mStatusBit = 5, mMessage = '-161,"Invalid block data"' },
+    [-160] = {mState = true, mCode = "-160", mStatusBit = 5, mMessage = '-160,"Block data error"' },                --
+    [-158] = {mState = true, mCode = "-158", mStatusBit = 5, mMessage = '-158,"String data not allowed"' },
+    [-154] = {mState = true, mCode = "-154", mStatusBit = 5, mMessage = '-154,"String too long"' },
+    [-151] = {mState = true, mCode = "-151", mStatusBit = 5, mMessage = '-151,"Invalid string data"' },
+    [-150] = {mState = true, mCode = "-150", mStatusBit = 5, mMessage = '-150,"String data error"' },               --
+    [-148] = {mState = true, mCode = "-148", mStatusBit = 5, mMessage = '-148,"Character data not allowed"' },
+
+    [-144] = {mState = true, mCode = "-144", mStatusBit = 5, mMessage = '-144,"Character data too long"' },
+    [-141] = {mState = true, mCode = "-141", mStatusBit = 5, mMessage = '-141,"Invalid character data"' },
+    [-140] = {mState = true, mCode = "-140", mStatusBit = 5, mMessage = '-140,"Character data error"' },
+    [-128] = {mState = true, mCode = "-128", mStatusBit = 5, mMessage = '-128,"Numeric data not allowed"' },
+    [-124] = {mState = true, mCode = "-124", mStatusBit = 5, mMessage = '-124,"Too many digits"' },
+
+    [-123] = {mState = true, mCode = "-123", mStatusBit = 5, mMessage = '-123,"Exponent too large"' },
+    [-121] = {mState = true, mCode = "-121", mStatusBit = 5, mMessage = '-121,"Invalid character in number"' },
+    [-120] = {mState = true, mCode = "-120", mStatusBit = 5, mMessage = '-120,"Numeric data error"' },
+    [-114] = {mState = true, mCode = "-114", mStatusBit = 5, mMessage = '-114,"Header suffix out of range"' },
+    [-113] = {mState = true, mCode = "-113", mStatusBit = 5, mMessage = '-113,"Undefined header"' },                --
+
+    [-112] = {mState = true, mCode = "-112", mStatusBit = 5, mMessage = '-112,"Program mnemonic too long"' },
+    [-111] = {mState = true, mCode = "-111", mStatusBit = 5, mMessage = '-111,"Header separator error"' },          --
+    [-110] = {mState = true, mCode = "-110", mStatusBit = 5, mMessage = '-110,"Command header error"' },
+    [-109] = {mState = true, mCode = "-109", mStatusBit = 5, mMessage = '-109,"Missing parameter"' },               --
+    [-108] = {mState = true, mCode = "-108", mStatusBit = 5, mMessage = '-108,"Parameter not allowed"' },           --
+
+    [-105] = {mState = true, mCode = "-105", mStatusBit = 5, mMessage = '-105,"GET not allowed"' },
+    [-104] = {mState = true, mCode = "-104", mStatusBit = 5, mMessage = '-104,"Data type error"' },
+    [-103] = {mState = true, mCode = "-103", mStatusBit = 5, mMessage = '-103,"Invalid separator"' },
+    [-102] = {mState = true, mCode = "-102", mStatusBit = 5, mMessage = '-102,"Syntax error"' },                    --
+    [-101] = {mState = true, mCode = "-101", mStatusBit = 5, mMessage = '-101,"Invalid character"' },
+    [-100] = {mState = true, mCode = "-100", mStatusBit = 5, mMessage = '-100,"Command error"' },
+
+    -- Status Events
+    -- Measurement events:
+    [0]   = {mState = false, mCode = "0", mStatusBit = 15, mMessage = '0,"No error"' },
+    [100] = {mState = false, mCode = "100", mStatusBit = 15, mMessage = '100,"Limit 1 failed"' },
+    [101] = {mState = false, mCode = "101", mStatusBit = 15, mMessage = '101,"Low limit 2 failed"' },
+    [102] = {mState = false, mCode = "102", mStatusBit = 15, mMessage = '102,"High limit 2 failed"' },
+    [103] = {mState = false, mCode = "103", mStatusBit = 15, mMessage = '103,"Low limit 3 failed"' },
+    [104] = {mState = false, mCode = "104", mStatusBit = 15, mMessage = '104,"High limit 3 failed"' },
+    [105] = {mState = false, mCode = "105", mStatusBit = 15, mMessage = '105,"Active limit tests passed"' },
+    [106] = {mState = false, mCode = "106", mStatusBit = 15, mMessage = '106,"Reading available"' },
+    [107] = {mState = false, mCode = "107", mStatusBit = 15, mMessage = '107,"Reading overflow"' },
+    [108] = {mState = false, mCode = "108", mStatusBit = 15, mMessage = '108,"Buffer available"' },
+    [109] = {mState = false, mCode = "109", mStatusBit = 15, mMessage = '109,"Buffer full"' },
+    [110] = {mState = false, mCode = "110", mStatusBit = 15, mMessage = '110,"Limit 4 failed"' },
+    [111] = {mState = false, mCode = "111", mStatusBit = 15, mMessage = '111,"OUTPUT enable asserted"' },
+    [112] = {mState = false, mCode = "112", mStatusBit = 15, mMessage = '112,"Temperature limit exceeded"' },
+    [113] = {mState = false, mCode = "113", mStatusBit = 15, mMessage = '113,"Voltage limit exceeded"' },
+    [114] = {mState = false, mCode = "114", mStatusBit = 15, mMessage = '114,"Source in compliance"' },
+
+    -- Standard events:
+    [200] = {mState = false, mCode = "200", mStatusBit = 15, mMessage = '200,"Operation complete"' },
+
+    -- Operation events:
+    [300] = {mState = false, mCode = "300", mStatusBit = 15, mMessage = '300,"Device calibrating"' },
+    [303] = {mState = false, mCode = "303", mStatusBit = 15, mMessage = '303,"Device sweeping"' },
+    [305] = {mState = false, mCode = "305", mStatusBit = 15, mMessage = '305,"Waiting in trigger layer"' },
+    [306] = {mState = false, mCode = "306", mStatusBit = 15, mMessage = '306,"Waiting in arm layer"' },
+    [310] = {mState = false, mCode = "310", mStatusBit = 15, mMessage = '310,"Entering idle layer"' },
+
+    -- Questionable events:
+    [408] = {mState = false, mCode = "408", mStatusBit = 15, mMessage = '408,"Questionable Calibration"' },
+    [414] = {mState = false, mCode = "414", mStatusBit = 15, mMessage = '414,"Command Warning"' },
+
+    -- Error Events
+    -- Calibration errors:
+    [500] = {mState = true, mCode = "500", mStatusBit = 3, mMessage = '500,"Date of calibration not set"' },
+    [501] = {mState = true, mCode = "501", mStatusBit = 3, mMessage = '501,"Next date of calibration not set"' },
+    [502] = {mState = true, mCode = "502", mStatusBit = 3, mMessage = '502,"Calibration data invalid"' },
+    [503] = {mState = true, mCode = "503", mStatusBit = 3, mMessage = '503,"DAC calibration overflow"' },
+    [504] = {mState = true, mCode = "504", mStatusBit = 3, mMessage = '504,"DAC calibration underflow"' },
+    [505] = {mState = true, mCode = "505", mStatusBit = 3, mMessage = '505,"Source offset data invalid"' },
+    [506] = {mState = true, mCode = "506", mStatusBit = 3, mMessage = '506,"Source gain data invalid"' },
+    [507] = {mState = true, mCode = "507", mStatusBit = 3, mMessage = '507,"Measurement offset data invalid"' },
+    [508] = {mState = true, mCode = "508", mStatusBit = 3, mMessage = '508,"Measurement gain data invalid"' },
+    [509] = {mState = true, mCode = "509", mStatusBit = 3, mMessage = '509,"Not permitted with cal locked"' },
+    [510] = {mState = true, mCode = "510", mStatusBit = 3, mMessage = '510,"Not permitted with cal un-locked"' },
+
+    -- Lost data errors:
+    [601] = {mState = true, mCode = "601", mStatusBit = 3, mMessage = '601,"Reading buffer data lost"' },
+    [602] = {mState = true, mCode = "602", mStatusBit = 3, mMessage = '602,"GPIB address lost"' },
+    [603] = {mState = true, mCode = "603", mStatusBit = 3, mMessage = '603,"Power-on state lost"' },
+    [604] = {mState = true, mCode = "604", mStatusBit = 3, mMessage = '604,"DC calibration data lost"' },
+    [605] = {mState = true, mCode = "605", mStatusBit = 3, mMessage = '605,"Calibration dates lost"' },
+    [606] = {mState = true, mCode = "606", mStatusBit = 3, mMessage = '606,"GPIB communication language lost"' },
+
+    -- Communication errors:
+    [700] = {mState = true, mCode = "700", mStatusBit = 3, mMessage = '700,"Invalid system communication"' },
+    [701] = {mState = true, mCode = "701", mStatusBit = 3, mMessage = '701,"ASCII only with RS-232"' },
+    [702] = {mState = true, mCode = "702", mStatusBit = 3, mMessage = '702,"Preamp Timeout"' },
+
+    -- Additional command execution errors:
+    [800] = {mState = true, mCode = "800", mStatusBit = 4, mMessage = '800,"Illegal with storage active"' },
+    [801] = {mState = true, mCode = "801", mStatusBit = 4, mMessage = '801,"Insufficient vector data"' },
+    [802] = {mState = true, mCode = "802", mStatusBit = 4, mMessage = '802,"OUTPUT blocked by output enable"' },
+    [803] = {mState = true, mCode = "803", mStatusBit = 4, mMessage = '803,"Not permitted with OUTPUT off"' },
+    [804] = {mState = true, mCode = "804", mStatusBit = 4, mMessage = '804,"Expression list full"' },
+    [805] = {mState = true, mCode = "805", mStatusBit = 4, mMessage = '805,"Undefined expression exists"' },
+    [806] = {mState = true, mCode = "806", mStatusBit = 4, mMessage = '806,"Expression not found"' },
+    [807] = {mState = true, mCode = "807", mStatusBit = 4, mMessage = '807,"Definition not allowed"' },
+    [808] = {mState = true, mCode = "808", mStatusBit = 4, mMessage = '808,"Expression cannot be deleted"' },
+    [809] = {mState = true, mCode = "809", mStatusBit = 4, mMessage = '809,"Source memory location revised"' },
+    [810] = {mState = true, mCode = "810", mStatusBit = 4, mMessage = '810,"OUTPUT blocked by Over Temp"' },
+    [811] = {mState = true, mCode = "811", mStatusBit = 4, mMessage = '811,"Not an operator or number"' },
+    [812] = {mState = true, mCode = "812", mStatusBit = 4, mMessage = '812,"Mismatched parenthesis"' },
+    [813] = {mState = true, mCode = "813", mStatusBit = 4, mMessage = '813,"Not a number of data handle"' },
+    [814] = {mState = true, mCode = "814", mStatusBit = 4, mMessage = '814,"Mismatched brackets"' },
+    [815] = {mState = true, mCode = "815", mStatusBit = 4, mMessage = '815,"Too many parenthesis"' },
+    [816] = {mState = true, mCode = "816", mStatusBit = 4, mMessage = '816,"Entire expression not parsed"' },
+    [817] = {mState = true, mCode = "817", mStatusBit = 4, mMessage = '817,"Unknown token"' },
+    [818] = {mState = true, mCode = "818", mStatusBit = 4, mMessage = '818,"Error parsing mantissa"' },
+    [819] = {mState = true, mCode = "819", mStatusBit = 4, mMessage = '819,"Error parsing exponent"' },
+    [820] = {mState = true, mCode = "820", mStatusBit = 4, mMessage = '820,"Error parsing value"' },
+    [821] = {mState = true, mCode = "821", mStatusBit = 4, mMessage = '821,"Invalid data handle index"' },
+    [822] = {mState = true, mCode = "822", mStatusBit = 4, mMessage = '822,"Too small for sense range"' },
+    [823] = {mState = true, mCode = "823", mStatusBit = 4, mMessage = '823,"Invalid with source read-back on"' },
+    [824] = {mState = true, mCode = "824", mStatusBit = 4, mMessage = '824,"Cannot exceed compliance range"' },
+    [825] = {mState = true, mCode = "825", mStatusBit = 4, mMessage = '825,"Invalid with auto-ohms on"' },
+    [826] = {mState = true, mCode = "826", mStatusBit = 4, mMessage = '826,"Attempt to exceed power limit"' },
+    [827] = {mState = true, mCode = "827", mStatusBit = 4, mMessage = '827,"Invalid with ohms guard on"' },
+    [828] = {mState = true, mCode = "828", mStatusBit = 4, mMessage = '828,"Invalid on 1 amp range"' },
+    [829] = {mState = true, mCode = "829", mStatusBit = 4, mMessage = '829,"Invalid on 1kV range"' },
+    [830] = {mState = true, mCode = "830", mStatusBit = 4, mMessage = '830,"Invalid with INF ARM:COUNT"' },
+    [831] = {mState = true, mCode = "831", mStatusBit = 4, mMessage = '831,"Invalid in Pulse Mode"' },
+    [900] = {mState = true, mCode = "900", mStatusBit = 3, mMessage = '900,"Internal System Error"' }
+}
+
+------------------------------------------------------------------------------
+--
+-- gErrorQueue.Add
+--
+-- Put an error into the error queue.
+--
+------------------------------------------------------------------------------
+
+gErrorQueue.Add = function (lErrorNumber)
+    local lError = lErrors[lErrorNumber]
+       
+    --if lError.mStatusBit ~= 15 then
+    --    StatusModel.SetEvent(standardStatus, lError.mStatusBit + 1)
+    --end
+
+    if lError.mState then
+        local lCount = table.getn(gErrorQueue)
+
+        if lCount < 64 then
+            table.insert(gErrorQueue, lError)
+            --StatusModel.SetSummary(3)
+        elseif lCount == 64 then
+            table.insert(gErrorQueue, lErrors[-350])
+        end    
+        -- Display Error Message on Front Panel and Beep
+        if gDisplayErrors then
+            if gErrorQueue.lDisplay then
+                display.delete(gErrorQueue.lDisplay)
+            end
+            gErrorQueue.lDisplay = display.prompt(
+                display.BUTTONS_OK,
+                lError.mMessage
+            )
+            beeper.beep(0.15, 340)
+        end
+        if gErrorReadback then
+            print(lError.mMessage)
+        end
+    end
+end
+
+--[[
+    ReadErrorQueue prints the errors from the error queue
+    if the queue is empty '0,"No error"' is printed
+--]]
+gErrorQueue.ReadError = function ()
+    local lCount = table.getn(gErrorQueue)
+    
+    if lCount == 0 then
+        Print('0,"No error"')
+    else
+        Print(gErrorQueue[1].mMessage)
+        table.remove(gErrorQueue, 1)
+        if lCount == 1 then
+            --StatusModel.ClearSummary(3)
+        end
+    end
+end
+
+--[[
+    ReadErrorCode prints the error codes from the error queue
+    if the queue is empty '0' is printed
+--]]
+gErrorQueue.ReadErrorCode = function ()
+    local lCount = table.getn(gErrorQueue)
+    
+    if lCount == 0 then
+        Print('0')
+    else
+        Print(gErrorQueue[1].mCode)
+        table.remove(gErrorQueue, 1)
+        if lCount == 1 then
+            --StatusModel.ClearSummary(3)
+        end
+    end
+end
+
+--[[
+    ErrorCount prints the number of errors in the queue
+--]]
+gErrorQueue.ErrorCount = function ()
+    Print(tostring(table.getn(gErrorQueue)))
+end
+
+--[[
+    ReadErrorAll prints all the errors from the error queue
+    and clears the error queue.
+    if the queue is empty '0,"No error"' is printed
+--]]
+gErrorQueue.ReadErrorAll = function ()
+    if table.getn(gErrorQueue) == 0 then
+        Print('0,"No error"')
+    else
+        for i = 1, table.getn(gErrorQueue) do
+            if i > 1 then
+                Print(',')
+            end
+            Print(gErrorQueue[1].mMessage)
+            table.remove(gErrorQueue, 1)
+        end
+        --StatusModel.ClearSummary(3)
+    end
+end
+
+--[[
+    ReadErrorCodeAll prints all the error codes from the error queue
+    and clears the error queue.
+    if the queue is empty '0' is printed
+--]]
+gErrorQueue.ReadErrorCodeAll = function ()
+    if table.getn(gErrorQueue) == 0 then
+        Print('0')
+    else
+        for i = 1, table.getn(gErrorQueue) do
+            if i > 1 then
+                Print(',')
+            end
+            Print(gErrorQueue[1].mCode)
+            table.remove(gErrorQueue, 1)
+        end
+        StatusModel.ClearSummary(3)
+    end
+end
+
+--[[
+    Clear removes all the errors from the error queue
+--]]
+gErrorQueue.Clear = function ()
+    if table.getn(gErrorQueue) == 0 then
+        return
+    else
+        for i = 1, table.getn(gErrorQueue) do
+            table.remove(gErrorQueue, 1)
+        end
+        --StatusModel.ClearSummary(3)
+    end
+end
+
+--[[
+    DisableAllErrorEvents disables all the error and statue events
+--]]
+gErrorQueue.DisableAllErrorEvents = function ()
+    for k, v in pairs(lErrors) do
+        lErrors[k].mState = false
+    end
+end
+
+--[[
+    ChangeErrorEventState sets the state of the error events in lErrors table
+--]]
+gErrorQueue.ChangeErrorEventState = function (lStart, lStop, lState)
+    -- if start index is greater than end index swap them
+    if lStart > lStop then
+       local tempStart = lStart
+       lStart = lStop
+       lStop = tempStart
+    end
+
+    -- Set the state
+    for k = lStart, lStop do
+        if lErrors[k] then
+            lErrors[k].mState = lState
+        end
+    end
+end
+
+--[[
+    EnableErrorEvents enables the spcecified list of error and statue events
+    and disables the rest
+--]]
+gErrorQueue.EnableErrorEvents = function (lEventNumList)
+    gErrorQueue.DisableAllErrorEvents()
+    for k = 1, table.getn(lEventNumList), 2 do
+        gErrorQueue.ChangeErrorEventState(lEventNumList[k], lEventNumList[k+1], true)
+    end
+end
+
+--[[
+    DisableErrorEvents disable the spcecified list of error and statue events
+--]]
+gErrorQueue.DisableErrorEvents = function (lEventNumList)
+    --if table.getn(lEventNumList) then
+        for k = 1, table.getn(lEventNumList), 2 do
+            gErrorQueue.ChangeErrorEventState(lEventNumList[k], lEventNumList[k+1], false)
+        end
+    --end
+end
+
+--[[
+    PrintErrorEvents prints the list Enabled/Disabled error and statue events
+--]]
+gErrorQueue.PrintErrorEvents = function (lState)
+    local lAddToPrintQue = true
+    local lStart, lEnd
+    local lCount = 0
+    local lComma = false
+    
+    Print("(")
+    for i = -440, 900 do
+        if lErrors[i] then
+            if lErrors[i].mState == lState then
+                if lAddToPrintQue then
+                    lStart = lErrors[i].mCode
+                    lAddToPrintQue = false
+                end
+                lEnd = lErrors[i].mCode
+                lCount = lCount + 1
+            else
+                if lAddToPrintQue == false then
+                    if lCount > 1 then
+                        if lComma then
+                            Print(",")
+                        end
+                        if tonumber(lStart) >= 0 then
+                           Print("+")
+                        end
+                        Print(lStart)
+                        Print(":")
+                        if tonumber(lEnd) >= 0 then
+                           Print("+")
+                        end
+                        Print(lEnd)
+                        lComma = true
+                        lCount = 0
+                        lAddToPrintQue = true
+                    else
+                        if lComma then
+                            Print(",")
+                        end
+                        if tonumber(lEnd) >= 0 then
+                           Print("+")
+                        end
+                        Print(lEnd)
+                        lComma = true
+                        lCount = 0
+                        lAddToPrintQue = true
+                    end
+                end
+            end
+        end
+    end
+    if lCount > 1 then
+        if lComma then
+            Print(",")
+        end
+        if tonumber(lStart) >= 0 then
+           Print("+")
+        end
+        Print(lStart)
+        Print(":")
+        if tonumber(lEnd) >= 0 then
+           Print("+")
+        end
+        Print(lEnd)
+    elseif lCount == 1 then
+        if lComma then
+            Print(",")
+        end
+        if tonumber(lEnd) >= 0 then
+           Print("+")
+        end
+        Print(lEnd)
+    end
+    Print(")")
+end
 
 ------------------------------------------------------------------------------
  -- Global variable declarations
@@ -2018,7 +2605,7 @@ local FormatNumber = function (lNumber, signed)
 end
 
 -- ADD COMMAND FUNCTIONALITY HERE
-
+local gCurrentRoot
 -- ABORt
 -- PLACEHOLDER TO EXIT SCRIPT
 gCurrentRoot = gCommandTree["ABORT"]
@@ -2039,19 +2626,108 @@ gCurrentRoot.mQuery.mExecute = function()
         )
     )
 end
-
+-- CONFigure[:VOLTage]:AC [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["AC"]
+gCurrentRoot.mCommand.mParameters =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.AC_Voltage.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.AC_Voltage.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.AC_Voltage.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.AC_Voltage.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.AC_Voltage
+    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    gResetFunctionVariables.ResetACVoltage()
+    gSetFunctionAttributes.SetACVoltage()
+    local lMeasureRange = lParameters[1]
+    if lMeasureRange then
+        if lMeasureRange == "AUTO" then
+            gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]["AUTO"].mCommand.mExecute({"ON"})
+        elseif lMeasureRange <= gOperatingBoundaries.AC_Voltage.Range.max
+        and    lMeasureRange >= gOperatingBoundaries.AC_Voltage.Range.min then
+            gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"].mCommand.mExecute({lMeasureRange})
+        else
+            gErrorQueue.Add(-222)
+        end
+    end
+end
+-- CONFigure[:VOLTage]:DC [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["DC"]
+gCurrentRoot.mCommand.mParameters =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.DC_Voltage.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.DC_Voltage.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.DC_Voltage.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.DC_Voltage
+    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    gResetFunctionVariables.ResetDCVoltage()
+    gSetFunctionAttributes.SetDCVoltage()
+    local lMeasureRange = lParameters[1]
+    if lMeasureRange then
+        if lMeasureRange == "AUTO" then
+            gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"].mCommand.mExecute({"ON"})
+        elseif lMeasureRange <= gOperatingBoundaries.DC_Voltage.Range.max
+        and    lMeasureRange >= gOperatingBoundaries.DC_Voltage.Range.min then
+            gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"].mCommand.mExecute({lMeasureRange})
+        else
+            gErrorQueue.Add(-222)
+        end
+    end
+end
 
 -- [SENSe:]VOLTage:DC:NULL[:STATe] {ON|1|OFF|0}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lNullState = lParameters[1]
-    if lNullState == 1 then
+    if lNullState == true then
         gStateVariables.DC_Voltage.Null_State = gInstrumentAttributes.OnOff.ON
-    elseif lNullState == 0 then
+    elseif lNullState == false then
         gStateVariables.DC_Voltage.Null_State = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
         gAccessors.mSetRelEnable(gStateVariables.DC_Voltage.Null_State.shorthand)
     end
 end
@@ -2068,31 +2744,21 @@ gCurrentRoot["STATE"].mCommand = gCurrentRoot.mCommand
 gCurrentRoot["STATE"].mQuery = gCurrentRoot.mQuery
 --[SENSe:]VOLTage:DC:NULL:VALue {<value>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNullValue}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local relLevel = lParameters[1]
-    gStateVariables.DC_Voltage.Null_Value = relLevel
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
-        gAccessors.mSetRelLevel(relLevel)
-    end
+    if relLevel <= gOperatingBoundaries.DC_Voltage.Null.max and
+       relLevel >= gOperatingBoundaries.DC_Voltage.Null.min then
+        gStateVariables.DC_Voltage.Null_Value = relLevel
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+            gAccessors.mSetRelLevel(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end    
 end
 --[SENSe:]VOLTage:DC:NULL:VALue? [{MIN|MAX|DEF}]
-gCurrentRoot.mQuery.mParameters = 
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["MIN"]         = -1000,
-            ["MINIMUM"]     = -1000,
-            ["MAX"]         = 1000,
-            ["MAXIMUM"]     = 1000,
-            ["DEF"]         = 0,
-            ["DEFAULT"]     = 0,
-        }
-    }
-}
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDCVNullValueKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintNullValue = lParameters[1]
     if lPrintNullValue == nil then
@@ -2109,9 +2775,9 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    if lParameters[1] == 1 then
+    if lParameters[1] == true then
         gStateVariables.DC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.ON
-    elseif lParameters[1] == 0 then
+    elseif lParameters[1] == false then
         gStateVariables.DC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.OFF
     end
 end
@@ -2129,38 +2795,26 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasureRange = lParameters[1]
-    -- Turn autorange off
-    gStateVariables.DC_Voltage.Range_Auto = "OFF"
-    -- Set the range
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
-        gAccessors.mSetMeasureAutorange(gOff)
-        gAccessors.mSetMeasureRange(lMeasureRange)
-    end
-    for _, lRange in ipairs(gInstrumentAttributes.Meas_Ranges.Voltage) do
-        if gMathAbs(lMeasureRange) <= 1.10 * lRange then
-            gStateVariables.DC_Voltage.Range = lRange
-            return
+    if gMathAbs(lMeasureRange) <= 1.10 * lMeasureRange then
+        -- Turn autorange off
+        gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
+        -- Set the range
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+            gAccessors.mSetMeasureAutorange(gOff)
+            gAccessors.mSetMeasureRange(lMeasureRange)
         end
+        for _, lRange in ipairs(gRangeTable.DC_Voltage) do
+            if gMathAbs(lMeasureRange) <= 1.10 * lRange then
+                gStateVariables.DC_Voltage.Range = lRange
+                return
+            end
+        end
+    else
+        gErrorQueue.Add(-222)
     end
-    -- OUT OF BOUNDS ERROR HERE
 end
 -- [SENSe:]VOLTage:DC:RANGe? [{MIN|MAX|DEF}]
-gCurrentRoot.mQuery.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["MIN"]         = 100e-3,
-            ["MINIMUM"]     = 100e-3,
-            ["MAX"]         = 1000,
-            ["MAXIMUM"]     = 1000,
-            ["DEF"]         = 1000,
-            ["DEFAULT"]     = 1000,
-        }
-    }
-}
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDCVoltageRangeKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintRange = lParameters[1]
     if lPrintRange == nil then
@@ -2175,7 +2829,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
 end
 --[SENSe:]VOLTage:DC:RANGe:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutorangeKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lAutorangeSetter = gAccessors.mSetMeasureAutorange
     local lAutorange = lParameters[1]
@@ -2185,19 +2839,19 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         local lMeasCount = gAccessors.mGetMeasureCount()
         local lMeasFunc = gAccessors.mGetMeasureFunction()
         gAccessors.mSetMeasureCount(1)
-        gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.Voltage_DC.DMM_Enum)
+        gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.DC_Voltage.DMM_Enum)
         gMeasure.read()
         gStateVariables.DC_Voltage.Range = gAccessors.mGetMeasureRange()
         gAccessors.mSetMeasureCount(lMeasCount)
         gAccessors.mSetMeasureFunction(lMeasFunc)
-        lAutorange = "OFF"
+        lAutorange = false
     end
-    if lAutorange == "ON" then
+    if lAutorange == true then
         gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.ON
-    elseif lAutorange == "OFF" then
+    elseif lAutorange == false then
         gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
         lAutorangeSetter(gStateVariables.DC_Voltage.Range_Auto.DMM_Enum)
     end
 end
@@ -2215,28 +2869,18 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lNPLC = lParameters[1]
-    gStateVariables.DC_Voltage.NPLC = lNPLC
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
-        gAccessors.mSetMeasureNPLC(lNPLC)
+    if lNPLC <= gOperatingBoundaries.General.Nplc.max 
+    and lNPLC >= gOperatingBoundaries.General.Nplc.min then
+        gStateVariables.DC_Voltage.NPLC = lNPLC
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+            gAccessors.mSetMeasureNPLC(lNPLC)
+        end
+    else
+        gErrorQueue.Add(-222)
     end
 end
 --[SENSe:]VOLTage[:DC]:NPLC? [{MIN|MAX|DEF}]
-gCurrentRoot.mQuery.mParameters = 
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["MIN"]         = 0.0005,
-            ["MINIMUM"]     = 0.0005,
-            ["MAX"]         = 12,
-            ["MAXIMUM"]     = 12,
-            ["DEF"]         = 10,
-            ["DEFAULT"]     = 10,
-        }   
-    }
-}
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNPLCKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lNPLC = lParameters[1]
     if lParameters[1] == nil then
@@ -2251,20 +2895,20 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
 end
 --[SENSe:]VOLTage[:DC]:ZERO:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutorangeKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lAutoZero = lParameters[1]
-    if lAutoZero == "ON" then
+    if lAutoZero == true then
         gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.ON
-    elseif lAutoZero == "OFF" then
+    elseif lAutoZero == false then
         gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.OFF
     elseif lAutoZero == "ONCE" then
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
             gMeasure.autozero.once()
         end
         gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_DC then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
         gAccessors.mSetAutozeroEnable(gStateVariables.DC_Voltage.Zero_Auto.DMM_Enum)
     end
 end
@@ -2280,65 +2924,36 @@ end
 
 --[SENSe:]VOLTage:AC:BANDwidth {<filter>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["BANDWIDTH"]
-gCurrentRoot.mCommand.mParameters = 
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            mParse = gParserTable.ParseParameterName,
-            mNames =
-            {
-                ["MIN"]         = 3,
-                ["MINIMUM"]     = 3,
-                ["MAX"]         = 300,
-                ["MAXIMUM"]     = 300,
-                ["DEF"]         = 30,
-                ["DEFAULT"]     = 30,
-            }
-        }
-    }
-}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBandwidth}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lDetectorBandwidth = lParameters[1]
-    if lParameters[1] == 3 then
-        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ3
-    elseif lParameters[1] == 30 then
-        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ30
-    elseif lParameters[1] == 300 then
-        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ300
+    if lDetectorBandwidth > 300000 
+    or lDetectorBandwidth < gOperatingBoundaries.AC_Voltage.Bandwidth.min then
+        gErrorQueue.Add(-222)
+        return
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_AC then
+    if lDetectorBandwidth >= 300 then
+        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ300
+    elseif lDetectorBandwidth >= 30 then
+        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ30
+    elseif lDetectorBandwidth >= 3 then
+        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ3
+    end
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
         gAccessors.mSetDetectorBandwidth(gStateVariables.AC_Voltage.Bandwidth.DMM_Enum)
     end
 end
 --[SENSe:]VOLTage:AC:BANDwidth? [{MIN|MAX|DEF}]
-gCurrentRoot.mQuery.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["MIN"]         = 3,
-            ["MINIMUM"]     = 3,
-            ["MAX"]         = 300,
-            ["MAXIMUM"]     = 300,
-            ["DEF"]         = 30,
-            ["DEFAULT"]     = 30,
-        }
-    }
-}
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseBandwidthKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lBandwidth = lParameters[1]
     if lParameters[1] == nil then
-        lBandwidth = gStateVariables.DC_Voltage.NPLC
+        lBandwidth = gStateVariables.AC_Voltage.Bandwidth
     end
     print(
         string.format(
             "%s",
-            FormatNumber(lBandwidth, true)
+            FormatNumber(lBandwidth.shorthand, true)
         )
     )
 end
@@ -2347,12 +2962,12 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lNullState = lParameters[1]
-    if lNullState == 1 then
+    if lNullState == true then
         gStateVariables.AC_Voltage.Null_State = gInstrumentAttributes.OnOff.ON
-    elseif lNullState == 0 then
+    elseif lNullState == false then
         gStateVariables.AC_Voltage.Null_State = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_AC then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
         gAccessors.mSetRelEnable(gStateVariables.AC_Voltage.Null_State.shorthand)
     end
 end
@@ -2369,31 +2984,21 @@ gCurrentRoot["STATE"].mCommand = gCurrentRoot.mCommand
 gCurrentRoot["STATE"].mQuery = gCurrentRoot.mQuery
 --[SENSe:]VOLTage:AC:NULL:VALue {<value>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNullValue}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local relLevel = lParameters[1]
-    gStateVariables.AC_Voltage.Null_Value = relLevel
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_AC then
-        gAccessors.mSetRelLevel(relLevel)
+    if relLevel <= gOperatingBoundaries.AC_Voltage.Null.max and
+       relLevel >= gOperatingBoundaries.AC_Voltage.Null.min then
+        gStateVariables.AC_Voltage.Null_Value = relLevel
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+            gAccessors.mSetRelLevel(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
     end
 end
 --[SENSe:]VOLTage:AC:NULL:VALue? [{MIN|MAX|DEF}]
-gCurrentRoot.mQuery.mParameters = 
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["MIN"]         = -1000,
-            ["MINIMUM"]     = -1000,
-            ["MAX"]         = 1000,
-            ["MAXIMUM"]     = 1000,
-            ["DEF"]         = 0,
-            ["DEFAULT"]     = 0,
-        }
-    }
-}
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseACVNullValueKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintNullValue = lParameters[1]
     if lPrintNullValue == nil then
@@ -2410,9 +3015,9 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    if lParameters[1] == 1 then
+    if lParameters[1] == true then
         gStateVariables.AC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.ON
-    else
+    elseif lParameters[1] == false then
         gStateVariables.AC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.OFF
     end
 end
@@ -2430,38 +3035,26 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasureRange = lParameters[1]
-    -- Turn autorange off
-    gStateVariables.AC_Voltage.Range_Auto = "OFF"
-    -- Set the range
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_AC then
-        gAccessors.mSetMeasureAutorange(gOff)
-        gAccessors.mSetMeasureRange(lMeasureRange)
-    end
-    for _, lRange in ipairs(gInstrumentAttributes.Meas_Ranges.Voltage) do
-        if gMathAbs(lMeasureRange) <= 1.10 * lRange then
-            gStateVariables.AC_Voltage.Range = lRange
-            return
+    if gMathAbs(lMeasureRange) <= 1.10 * lMeasureRange then
+        -- Turn autorange off
+        gStateVariables.AC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
+        -- Set the range
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+            gAccessors.mSetMeasureAutorange(gOff)
+            gAccessors.mSetMeasureRange(lMeasureRange)
         end
+        for _, lRange in ipairs(gRangeTable.AC_Voltage) do
+            if gMathAbs(lMeasureRange) <= 1.10 * lRange then
+                gStateVariables.AC_Voltage.Range = lRange
+                return
+            end
+        end
+    else
+        gErrorQueue.Add(-222)
     end
-    -- OUT OF BOUNDS ERROR HERE
 end
 -- [SENSe:]VOLTage:AC:RANGe? [{MIN|MAX|DEF}]
-gCurrentRoot.mQuery.mParameters = 
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["MIN"]         = 100e-3,
-            ["MINIMUM"]     = 100e-3,
-            ["MAX"]         = 1000,
-            ["MAXIMUM"]     = 1000,
-            ["DEF"]         = 10,
-            ["DEFAULT"]     = 10,
-        }
-    }
-}
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseACVoltageRangeKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintRange = lParameters[1]
     if lPrintRange == nil then
@@ -2476,7 +3069,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
 end
 --[SENSe:]VOLTage:AC:RANGe:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]["AUTO"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutorangeKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lAutorangeSetter = gAccessors.mSetMeasureAutorange
     local lAutorange = lParameters[1]
@@ -2486,19 +3079,19 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         local lMeasCount = gAccessors.mGetMeasureCount()
         local lMeasFunc = gAccessors.mGetMeasureFunction()
         gAccessors.mSetMeasureCount(1)
-        gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.Voltage_AC.DMM_Enum)
+        gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.AC_Voltage.DMM_Enum)
         gMeasure.read()
         gStateVariables.AC_Voltage.Range = gAccessors.mGetMeasureRange()
         gAccessors.mSetMeasureCount(lMeasCount)
         gAccessors.mSetMeasureFunction(lMeasFunc)
-        lAutorange = "OFF"
+        lAutorange = false
     end
-    if lAutorange == "ON" then
+    if lAutorange == true then
         gStateVariables.AC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.ON
-    elseif lAutorange == "OFF" then
+    elseif lAutorange == false then
         gStateVariables.AC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Voltage_AC then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
         lAutorangeSetter(gStateVariables.AC_Voltage.Range_Auto.DMM_Enum)
     end
 end
@@ -2510,53 +3103,6 @@ gCurrentRoot.mQuery.mExecute = function()
             gStateVariables.AC_Voltage.Range_Auto.shorthand
         )
     )
-end
-
-------------------------------------------------------------------------------
--- ResetDefaults()
--- Sets the smu to 2400 reset defaults
-------------------------------------------------------------------------------
-
-local gResetFunctionVariables = {
-    -- APPLY TO ALL MEASUREMENT FUNCTIONS
-    ResetDCVoltage = function()
-        -- DC VOLTAGE VARIABLES
-        gStateVariables.DC_Voltage.Null_State       = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.Null_Value       = 0
-        gStateVariables.DC_Voltage.Null_Value_Auto  = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.Range            = 1000
-        gStateVariables.DC_Voltage.Range_Auto       = gInstrumentAttributes.OnOff.ON
-        gStateVariables.DC_Voltage.Aperture         = 100E-3
-        gStateVariables.DC_Voltage.Aperture_Enabled = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.Impedance_Auto   = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.NPLC             = 10
-        gStateVariables.DC_Voltage.Zero_Auto        = gInstrumentAttributes.OnOff.ON
-    end,
-    ResetACVoltage = function()
-        -- AC VOLTAGE VARIABLES
-        gStateVariables.AC_Voltage.Bandwidth        = gInstrumentAttributes.Detector_Bandwidth.HZ30
-        gStateVariables.AC_Voltage.Null_State       = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.AC_Voltage.Null_Value       = 0
-        gStateVariables.AC_Voltage.Null_Value_Auto  = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.AC_Voltage.Range            = 10
-        gStateVariables.AC_Voltage.Range_Auto       = gInstrumentAttributes.OnOff.ON
-    end,
-}
-
-local ResetScriptVariables = function()
-        gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.Voltage_DC
-        gResetFunctionVariables.ResetDCVoltage()
-        gResetFunctionVariables.ResetACVoltage()
-end
-
-local ResetDMMSettings = function()
-    reset()
-    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
-end
-
-ResetDefaults = function ()
-    ResetScriptVariables()
-    ResetDMMSettings()
 end
 
 -- INITIALIZE HERE
