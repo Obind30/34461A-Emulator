@@ -296,7 +296,6 @@ local gRangeTable =
     Continuity      = {1e3},
     Diode           = {10},
     Capacitance     = {1e-9, 10e-9, 100e-9, 1e-6, 10e-6, 100e-6, 1e-3},
-    Ratio           = {100e-3, 1, 10, 100, 1000}
 }
 
 local gOperatingBoundaries =
@@ -336,6 +335,7 @@ local gOperatingBoundaries =
         },
         Bandwidth =
         {
+            -- These match 6500 not 34461
             max = 300,
             def = 30,
             min = 3
@@ -378,7 +378,7 @@ local gStateVariables =
     -- Math Functions           Disabled, Other parameters unchanged
     -- Per-function Null State  Disabled
 
-    -- DC VOLTAGE VARIABLES
+    -- DC VOLTAGE/RATIO VARIABLES
     DC_Voltage = 
     {
         Null_State,
@@ -462,6 +462,7 @@ local gSetFunctionAttributes =
 local ResetDMMSettings = function()
     reset()
     gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    gSetFunctionAttributes.SetDCVoltage()
 end
 
 ResetDefaults = function ()
@@ -1859,6 +1860,8 @@ end
 
 gCommandTree = 
 {
+    ["*IDN"] = {mCommand = {}},
+    ["*RST"] = {mCommand = {}},
     ["ABORT"] =
     {
         mCommand = {},
@@ -1870,50 +1873,11 @@ gCommandTree =
         {
             mCommand = {},
         },
-        ["CAPACITANCE"] =
-        {
-            mCommand = {},
-        },
-        ["CONTINUITY"] =
-        {
-            mCommand = {},
-        },
-        ["CURRENT"] =
-        {
-            ["AC"] =
-            {
-                mCommand = {},
-            },
-            ["DC"] =
-            {
-                mCommand = {},
-            },
-        },
         ["DC"] =
         {
             mCommand = {},
         },
-        ["DIODE"] =
-        {
-            mCommand = {},
-        },
-        ["FREQUENCY"] =
-        {
-            mCommand = {},
-        },
-        ["PERIOD"] =
-        {
-            mCommand = {},
-        },
-        ["RESISTANCE"] =
-        {
-            mCommand = {},
-        },
-        ["FRESISTANCE"] =
-        {
-            mCommand = {},
-        },
-        ["TEMPERATURE"] =
+        ["RATIO"] =
         {
             mCommand = {},
         },
@@ -1926,80 +1890,12 @@ gCommandTree =
             ["DC"] =
             {
                 mCommand = {},
-            },
-        },
-    },
-    ["MEASURE"] =
-    {
-        ["CAPACITANCE"] =
-        {
-            mQuery = {},
-        },
-        ["CONTINUITY"] =
-        {
-            mQuery = {},
-        },
-        ["CURRENT"] =
-        {
-            ["AC"] =
-            {
-                mQuery = {},
-            },
-            ["DC"] =
-            {
-                mQuery = {},
-            },
-        },
-        ["DIODE"] =
-        {
-            mQuery = {},
-        },
-        ["FREQUENCY"] =
-        {
-            mCommand = {},
-        },
-        ["PERIOD"] =
-        {
-            mCommand = {},
-        },
-        ["RESISTANCE"] =
-        {
-            mCommand = {},
-        },
-        ["FRESISTANCE"] =
-        {
-            mCommand = {},
-        },
-        ["TEMPERATURE"] =
-        {
-            mCommand = {},
-        },
-        ["VOLTAGE"] =
-        {
-            ["AC"] =
-            {
-                mCommand = {},
-            },
-            ["DC"] =
-            {
-                mCommand = {},
-                ["RATIO"] =
-                {
-                    mCommand = {},
-                },
             },
         },
     },
     ["SENSE"] =
     {
-        ["FUNCTION"] =
-        {
-            ["ON"] =
-            {
-                mQuery = {},
-                mCommand = {},
-            },
-        },
+        
         ["VOLTAGE"] =
         {
             ["NPLC"] =
@@ -2099,13 +1995,17 @@ gCommandTree =
 }
 
 -- ADD ABBREVIATION ALIASES HERE
-gCommandTree["ABOR"] = gCommandTree["ABORT"]
-gCommandTree["CONF"] = gCommandTree["CONFIGURE"]
-gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"] = gCommandTree["CONFIGURE"]["DC"]
-gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"] = gCommandTree["CONFIGURE"]["AC"]
-gCommandTree["CONFIGURE"]["VOLT"] = gCommandTree["CONFIGURE"]["VOLTAGE"]
-gCommandTree["CONFIGURE"]["VOLT"] = gCommandTree["CONFIGURE"]["VOLTAGE"]
-
+gCommandTree["ABOR"]                                    = gCommandTree["ABORT"]
+gCommandTree["CONF"]                                    = gCommandTree["CONFIGURE"]
+gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
+gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
+gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
+gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
+gCommandTree["CONFIGURE"]["RAT"]                        = gCommandTree["CONFIGURE"]["RATIO"]
+gCommandTree["CONFIGURE"]["DC"]["RATIO"]                = gCommandTree["CONFIGURE"]["RATIO"]
+gCommandTree["CONFIGURE"]["DC"]["RAT"]                  = gCommandTree["CONFIGURE"]["RATIO"]
+gCommandTree["CONFIGURE"]["VOLTAGE"]["RATIO"]           = gCommandTree["CONFIGURE"]["RATIO"]
+gCommandTree["CONFIGURE"]["VOLTAGE"]["RAT"]             = gCommandTree["CONFIGURE"]["RATIO"]
 
 gCommandTree["SENS"]                                    = gCommandTree["SENSE"]
 gCommandTree["VOLTAGE"]                                 = gCommandTree["SENSE"]["VOLTAGE"]
@@ -2606,12 +2506,29 @@ end
 
 -- ADD COMMAND FUNCTIONALITY HERE
 local gCurrentRoot
+
+gCurrentRoot = gCommandTree["*IDN"]
+gCurrentRoot.mCommand.mExecute = function()
+    print(
+        string.format(
+            "KEITHLEY INSTRUMENTS,MODEL DMM6500,%s,%s",
+            --"Keysight Technologies,34461A,%s,%s\n",
+            localnode.serialno,
+            localnode.version
+        )
+    )
+end
+gCurrentRoot = gCommandTree["*RST"]
+gCurrentRoot.mCommand.mExecute = function()
+    ResetDefaults()
+end
 -- ABORt
 -- PLACEHOLDER TO EXIT SCRIPT
 gCurrentRoot = gCommandTree["ABORT"]
 gCurrentRoot.mCommand.mExecute = function ()
     exit()
 end
+
 -- CONFigure?
 gCurrentRoot = gCommandTree["CONFIGURE"]
 gCurrentRoot.mQuery.mExecute = function()
@@ -2716,6 +2633,51 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         end
     end
 end
+-- CONFigure[:VOLTage][:DC]:RATio [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["DC"]["RATIO"]
+gCurrentRoot.mCommand.mParameters =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.DC_Voltage.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.DC_Voltage.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.DC_Voltage.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.Ratio
+    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    gResetFunctionVariables.ResetDCVoltage()
+    gSetFunctionAttributes.SetDCVoltage()
+    local lMeasureRange = lParameters[1]
+    if lMeasureRange then
+        if lMeasureRange == "AUTO" then
+            gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"].mCommand.mExecute({"ON"})
+        elseif lMeasureRange <= gOperatingBoundaries.DC_Voltage.Range.max
+        and    lMeasureRange >= gOperatingBoundaries.DC_Voltage.Range.min then
+            gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"].mCommand.mExecute({lMeasureRange})
+        else
+            gErrorQueue.Add(-222)
+        end
+    end
+end
 
 -- [SENSe:]VOLTage:DC:NULL[:STATe] {ON|1|OFF|0}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]
@@ -2727,7 +2689,8 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     elseif lNullState == false then
         gStateVariables.DC_Voltage.Null_State = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+    or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
         gAccessors.mSetRelEnable(gStateVariables.DC_Voltage.Null_State.shorthand)
     end
 end
@@ -2750,7 +2713,8 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     if relLevel <= gOperatingBoundaries.DC_Voltage.Null.max and
        relLevel >= gOperatingBoundaries.DC_Voltage.Null.min then
         gStateVariables.DC_Voltage.Null_Value = relLevel
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
             gAccessors.mSetRelLevel(relLevel)
         end
     else
@@ -2799,7 +2763,8 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         -- Turn autorange off
         gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
         -- Set the range
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
             gAccessors.mSetMeasureAutorange(gOff)
             gAccessors.mSetMeasureRange(lMeasureRange)
         end
@@ -2851,7 +2816,8 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     elseif lAutorange == false then
         gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+    or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
         lAutorangeSetter(gStateVariables.DC_Voltage.Range_Auto.DMM_Enum)
     end
 end
@@ -2872,7 +2838,8 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     if lNPLC <= gOperatingBoundaries.General.Nplc.max 
     and lNPLC >= gOperatingBoundaries.General.Nplc.min then
         gStateVariables.DC_Voltage.NPLC = lNPLC
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
             gAccessors.mSetMeasureNPLC(lNPLC)
         end
     else
@@ -2908,7 +2875,8 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         end
         gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+    or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
         gAccessors.mSetAutozeroEnable(gStateVariables.DC_Voltage.Zero_Auto.DMM_Enum)
     end
 end
