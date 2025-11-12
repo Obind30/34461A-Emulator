@@ -184,107 +184,6 @@ gAccessors.mGetAutozeroEnable       = makegetter(gMeasure.autozero, "enable")
 
 local gPrintEnable = false
 
-local gInstrumentAttributes =
-{
-    Meas_Functions =
-    {
-        DC_Voltage = 
-        {
-            shorthand = "VOLT",
-            DMM_Enum = dmm.FUNC_DC_VOLTAGE
-        },
-        AC_Voltage = 
-        {
-            shorthand = "VOLT:AC",
-            DMM_Enum = dmm.FUNC_AC_VOLTAGE
-        },
-        DC_Current = 
-        {
-            shorthand = "CURR",
-            DMM_Enum = dmm.FUNC_DC_CURRENT
-        },
-        AC_Current = 
-        {
-            shorthand = "CURR:AC",
-            DMM_Enum = dmm.FUNC_AC_CURRENT
-        },
-        Temperature = 
-        {
-            shorthand = "TEMP",
-            DMM_Enum = dmm.FUNC_TEMPERATURE
-        },
-        Resistance = 
-        {
-            shorthand = "RES",
-            DMM_Enum = dmm.FUNC_RESISTANCE
-        },
-        FW_Resistance = 
-        {
-            shorthand = "FRES",
-            DMM_Enum = dmm.FUNC_4W_RESISTANCE
-        },
-        Diode = 
-        {
-            shorthand = "DIOD",
-            DMM_Enum = dmm.FUNC_DIODE
-        },
-        Capacitance = 
-        {
-            shorthand = "CAP",
-            DMM_Enum = dmm.FUNC_CAPACITANCE
-        },
-        Continuity = 
-        {
-            shorthand = "CONT",
-            DMM_Enum = dmm.FUNC_CONTINUITY
-        },
-        Frequency = 
-        {
-            shorthand = "FREQ",
-            DMM_Enum = dmm.FUNC_ACV_FREQUENCY
-        },
-        Period = 
-        {
-            shorthand = "PER",
-            DMM_Enum = dmm.FUNC_ACV_PERIOD
-        },
-        Ratio = 
-        {
-            shorthand = "VOLT:RAT",
-            DMM_Enum = dmm.FUNC_DCV_RATIO
-        },
-    },
-    OnOff =
-    {
-        ON = {
-            DMM_Enum = dmm.ON,
-            shorthand = 1,
-        },
-        OFF = {
-            DMM_Enum = dmm.OFF,
-            shorthand = 0,
-        },
-    },
-    Detector_Bandwidth =
-    {
-        HZ3 = 
-        {
-            DMM_Enum = dmm.DETECTBW_3HZ,
-            shorthand = 3,
-        },
-        HZ30 = 
-        {
-            DMM_Enum = dmm.DETECTBW_30HZ,
-            shorthand = 30,
-        },
-        HZ300 = 
-        {
-            DMM_Enum = dmm.DETECTBW_300HZ,
-            shorthand = 300,
-        },
-    },
-}
-
 local gRangeTable =
 {
     DC_Voltage      = {100e-3, 1, 10, 100, 1000},
@@ -400,6 +299,109 @@ local gStateVariables =
         Null_Value_Auto,
         Range,
         Range_Auto,
+    },
+}
+
+local gInstrumentAttributes =
+{
+    Meas_Functions =
+    {
+        DC_Voltage = 
+        {
+            shorthand = "VOLT",
+            DMM_Enum = dmm.FUNC_DC_VOLTAGE,
+            stateVariables = gStateVariables.DC_Voltage
+        },
+        AC_Voltage = 
+        {
+            shorthand = "VOLT:AC",
+            DMM_Enum = dmm.FUNC_AC_VOLTAGE,
+            stateVariables = gStateVariables.AC_Voltage
+        },
+        DC_Current = 
+        {
+            shorthand = "CURR",
+            DMM_Enum = dmm.FUNC_DC_CURRENT
+        },
+        AC_Current = 
+        {
+            shorthand = "CURR:AC",
+            DMM_Enum = dmm.FUNC_AC_CURRENT
+        },
+        Temperature = 
+        {
+            shorthand = "TEMP",
+            DMM_Enum = dmm.FUNC_TEMPERATURE
+        },
+        Resistance = 
+        {
+            shorthand = "RES",
+            DMM_Enum = dmm.FUNC_RESISTANCE
+        },
+        FW_Resistance = 
+        {
+            shorthand = "FRES",
+            DMM_Enum = dmm.FUNC_4W_RESISTANCE
+        },
+        Diode = 
+        {
+            shorthand = "DIOD",
+            DMM_Enum = dmm.FUNC_DIODE
+        },
+        Capacitance = 
+        {
+            shorthand = "CAP",
+            DMM_Enum = dmm.FUNC_CAPACITANCE
+        },
+        Continuity = 
+        {
+            shorthand = "CONT",
+            DMM_Enum = dmm.FUNC_CONTINUITY
+        },
+        Frequency = 
+        {
+            shorthand = "FREQ",
+            DMM_Enum = dmm.FUNC_ACV_FREQUENCY
+        },
+        Period = 
+        {
+            shorthand = "PER",
+            DMM_Enum = dmm.FUNC_ACV_PERIOD
+        },
+        Ratio = 
+        {
+            shorthand = "VOLT:RAT",
+            DMM_Enum = dmm.FUNC_DCV_RATIO
+        },
+    },
+    OnOff =
+    {
+        ON = {
+            DMM_Enum = dmm.ON,
+            shorthand = 1,
+        },
+        OFF = {
+            DMM_Enum = dmm.OFF,
+            shorthand = 0,
+        },
+    },
+    Detector_Bandwidth =
+    {
+        HZ3 = 
+        {
+            DMM_Enum = dmm.DETECTBW_3HZ,
+            shorthand = 3,
+        },
+        HZ30 = 
+        {
+            DMM_Enum = dmm.DETECTBW_30HZ,
+            shorthand = 30,
+        },
+        HZ300 = 
+        {
+            DMM_Enum = dmm.DETECTBW_300HZ,
+            shorthand = 300,
+        },
     },
 }
 
@@ -1860,7 +1862,7 @@ end
 
 gCommandTree = 
 {
-    ["*IDN"] = {mCommand = {}},
+    ["*IDN"] = {mQuery = {}},
     ["*RST"] = {mCommand = {}},
     ["ABORT"] =
     {
@@ -1893,9 +1895,20 @@ gCommandTree =
             },
         },
     },
+    ["READ"] = 
+    {
+        mQuery ={},
+    },
     ["SENSE"] =
     {
-        
+        ["FUNCTION"] =
+        {
+            ["ON"] =
+            {
+                mCommand = {},
+                mQuery = {},
+            },
+        },
         ["VOLTAGE"] =
         {
             ["NPLC"] =
@@ -1997,17 +2010,27 @@ gCommandTree =
 -- ADD ABBREVIATION ALIASES HERE
 gCommandTree["ABOR"]                                    = gCommandTree["ABORT"]
 gCommandTree["CONF"]                                    = gCommandTree["CONFIGURE"]
+
 gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
 gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
-gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
+
 gCommandTree["CONFIGURE"]["RAT"]                        = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["DC"]["RATIO"]                = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["DC"]["RAT"]                  = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RATIO"]           = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RAT"]             = gCommandTree["CONFIGURE"]["RATIO"]
 
+
 gCommandTree["SENS"]                                    = gCommandTree["SENSE"]
+
+gCommandTree["FUNCTION"]                                = gCommandTree["SENSE"]["FUNCTION"]
+gCommandTree["FUNC"]                                    = gCommandTree["SENSE"]["FUNCTION"]
+
+gCommandTree["SENSE"]["FUNC"]                           = gCommandTree["SENSE"]["FUNCTION"]
+gCommandTree["SENSE"]["FUNCTION"].mCommand              = gCommandTree["SENSE"]["FUNCTION"]["ON"].mCommand
+gCommandTree["SENSE"]["FUNCTION"].mQuery                = gCommandTree["SENSE"]["FUNCTION"]["ON"].mQuery
+
 gCommandTree["VOLTAGE"]                                 = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["VOLT"]                                    = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["SENSE"]["VOLT"]                           = gCommandTree["SENSE"]["VOLTAGE"]
@@ -2021,6 +2044,30 @@ gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VAL"]   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NPLC"]          = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["ZERO"]["AUTO"]  = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
 
+-- DEV function
+gPrintCMDTree = function(printString, tree)
+    for key, value in pairs(tree) do
+        if key == "mCommand" or key == "mQuery" then
+            print(
+                string.format(
+                "%s:%s",
+                printString,
+                key
+                )
+            )
+        else
+            gPrintCMDTree(
+                string.format(
+                    "%s:%s",
+                    printString,
+                    key
+                ),
+                tree[key]
+            )  
+        end
+    end
+end
+--gPrintCMDTree("", gCommandTree)
 --============================================================================
 --
 -- Error Queue
@@ -2508,7 +2555,7 @@ end
 local gCurrentRoot
 
 gCurrentRoot = gCommandTree["*IDN"]
-gCurrentRoot.mCommand.mExecute = function()
+gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "KEITHLEY INSTRUMENTS,MODEL DMM6500,%s,%s",
@@ -2525,8 +2572,23 @@ end
 -- ABORt
 -- PLACEHOLDER TO EXIT SCRIPT
 gCurrentRoot = gCommandTree["ABORT"]
-gCurrentRoot.mCommand.mExecute = function ()
+gCurrentRoot.mCommand.mExecute = function()
     exit()
+end
+-- READ?
+gCurrentRoot = gCommandTree["READ"]
+gCurrentRoot.mQuery.mExecute = function()
+    local relLevel = 0
+    local measurement = gMeasure.read()
+    if gStateVariables.Measure_Function.stateVariables.Null_Value_Auto == gInstrumentAttributes.OnOff.ON then
+        relLevel = measurement
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(measurement-relLevel, true)
+        )
+    )
 end
 
 -- CONFigure?
@@ -2677,6 +2739,77 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
             gErrorQueue.Add(-222)
         end
     end
+end
+
+-- [SENSe:]FUNCtion[:ON] "<function>"
+gCurrentRoot = gCommandTree["SENSE"]["FUNCTION"]["ON"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    {
+        mParse = gParserTable.ParseParameterNameString,
+        mNames =
+        {
+            ["CAPACITANCE"]     = gInstrumentAttributes.Meas_Functions.Capacitance,
+            ["CAP"]             = gInstrumentAttributes.Meas_Functions.Capacitance,
+            
+            ["CONTINUITY"]      = gInstrumentAttributes.Meas_Functions.Continuity,
+            ["CONT"]            = gInstrumentAttributes.Meas_Functions.Continuity,
+            
+            ["CURRENT:AC"]      = gInstrumentAttributes.Meas_Functions.AC_Current,
+            ["CURR:AC"]         = gInstrumentAttributes.Meas_Functions.AC_Current,
+            
+            ["CURRENT:DC"]      = gInstrumentAttributes.Meas_Functions.DC_Current,
+            ["CURR:DC"]         = gInstrumentAttributes.Meas_Functions.DC_Current,
+            ["CURRENT"]         = gInstrumentAttributes.Meas_Functions.DC_Current,
+            ["CURR"]            = gInstrumentAttributes.Meas_Functions.DC_Current,
+            
+            ["DIODE"]           = gInstrumentAttributes.Meas_Functions.DIODE,
+            ["DIOD"]            = gInstrumentAttributes.Meas_Functions.DIODE,
+
+            ["FREQUENCY"]       = gInstrumentAttributes.Meas_Functions.Frequency,
+            ["FREQ"]            = gInstrumentAttributes.Meas_Functions.Frequency,
+
+            ["FRESISTANCE"]     = gInstrumentAttributes.Meas_Functions.FW_Resistance,
+            ["FRES"]            = gInstrumentAttributes.Meas_Functions.FW_Resistance,
+
+            ["PERIOD"]          = gInstrumentAttributes.Meas_Functions.Period,
+            ["PER"]             = gInstrumentAttributes.Meas_Functions.Period,
+
+            ["RESISTANCE"]      = gInstrumentAttributes.Meas_Functions.Resistance,
+            ["RES"]             = gInstrumentAttributes.Meas_Functions.Resistance,
+
+            ["TEMPERATURE"]     = gInstrumentAttributes.Meas_Functions.Temperature,
+            ["TEMP"]            = gInstrumentAttributes.Meas_Functions.Temperature,
+
+            ["VOLTAGE:AC"]      = gInstrumentAttributes.Meas_Functions.AC_Voltage,
+            ["VOLT:AC"]         = gInstrumentAttributes.Meas_Functions.AC_Voltage,
+
+            ["VOLTAGE:DC"]      = gInstrumentAttributes.Meas_Functions.DC_Voltage,
+            ["VOLT:DC"]         = gInstrumentAttributes.Meas_Functions.DC_Voltage,
+            ["VOLTAGE"]         = gInstrumentAttributes.Meas_Functions.DC_Voltage,
+            ["VOLT"]            = gInstrumentAttributes.Meas_Functions.DC_Voltage,
+
+            ["VOLTAGE:DC:RATIO"]    = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLT:DC:RATIO"]       = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLTAGE:RATIO"]       = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLT:RATIO"]          = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLTAGE:DC:RAT"]      = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLT:DC:RAT"]         = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLTAGE:RAT"]         = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLT:RAT"]            = gInstrumentAttributes.Meas_Functions.Ratio,
+        }
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lFunction = lParameters[1]
+    gStateVariables.Measure_Function = lFunction
+    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+end
+-- [SENSe:]FUNCtion[:ON]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        gStateVariables.Measure_Function.shorthand
+    )
 end
 
 -- [SENSe:]VOLTage:DC:NULL[:STATe] {ON|1|OFF|0}
