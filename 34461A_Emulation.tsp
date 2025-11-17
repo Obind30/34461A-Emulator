@@ -1,20 +1,48 @@
 --loadandrunscript 34461AEmulation
 
--- model/digio support
--- TODO simplify this, not needed now
-local gModelSupport =
-{
-    ["DMM6500"] = {mFeatureDigio = true}
-}
+--============================================================================
+--
+-- GLOBAL FUNCTIONS ACCESSIBLE BY USER
+--
+-- 1) ResetDefaults()
+--      Reset DMM6500 to 34461A defaults
+-- 2) Initialize34461A()
+--      Reset DMM6500 to 34461A defaults and prepare for emulation
+-- 3) Execute34461A
+-- 4) Engine34461A
+--      
+--
+-- MAJOR STRUCTURES TO BE AWARE OF
+-- gCommandTree
+-- gAccessors
+-- gStateVariables
+--============================================================================
 
--- TODO May not need an array for this
+--============================================================================
+--
+-- USER MUTABLE VARIABLES
+--
+-- These variables are intended to be changed by the user
+--
+--============================================================================
+
+local gPLC = 60                 -- Power Line Frequency
+local gDisplayErrors = true     -- Display errors to screen
+local gErrorReadback = false    -- Send errors back when they occur
+
+--============================================================================
+--
+-- Loading screen
+--
+--============================================================================
+
 local gDisplayVariables = {}
 gDisplayVariables.mDisplayScreen = display.SCREEN_HOME
 display.changescreen(display.SCREEN_USER_SWIPE)
 
 -- Loading Message
 display.clear()
-if gModelSupport[localnode.model] then
+if localnode.model == "DMM6500" then
 	display.settext(display.TEXT1, "Init 34461A mode")
     display.settext(display.TEXT2, "Please Wait...")
 	delay(50e-3)
@@ -26,26 +54,34 @@ else
 	exit()
 end
 
-local FwRev = localnode.version
-local gAutoRunEnable = false
-local gInitialized = false
-local gDisplayErrors = true
-local gErrorReadback = true
-local gCommandTree
-local gErrorQueue = {}
+--============================================================================
+--
+-- Major structures and variables to be used throughout script
+--
+--============================================================================
+
+local gDEVMODE = true
+
+local gInitialized = false      -- Has instrument been initialized
+local gCommandTree              -- This structure will all commands including their paths and execution functions
+local gErrorQueue = {}          -- This is the errorqueue structure
+
+local gAccessors = {}               -- Setter and getter functions 
+local gRemoteComm = ki.remotecomm   -- Internal command that recieves instrument communication
 
 --[[BUFFER VARIABLES FOR MEASUREMENTS]]
---local gCurrentBuffer
---local gVoltageBuffer
---local gSMCurrentBuffer
---local gSMVoltageBuffer
-
--- Setter and getter functions 
-local gAccessors = {}
-local gRemoteComm = ki.remotecomm
+local gReadingMemory =
+{
+    bufferSize = 10000,
+    readingBuffer = null,
+    bufferIndex = 0
+}
+gReadingMemory.readingBuffer = buffer.make(gReadingMemory.bufferSize, buffer.STYLE_STANDARD)
+gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
 
 local NullFunction = function () end
 
+-- Byte representation of commonly used characters
 local gCharCodes =
 {
     mB              = string.byte([[B]]),
@@ -78,21 +114,11 @@ local gCharCodes =
     mZero           = string.byte([[0]]),
 }
 
-local gResponseValues =
-{
-    [true]  = "1",
-    [false] = "0",
-    [1]     = "1",
-    [0]     = "0",
-}
-
+-- Useful parser strings
 local gNonProgMnemonic  = "[^%a%d_]"
 local gNonWhitespace    = "[^%s]"
 
-local gNan = 9.91e37
-local gInf = 9.90e37
-local gEpsilon = 5e-7
-
+-- Special commands, not currently implemented
 local gSpecialCommands =
 {
     ["$Empty"] =
@@ -129,33 +155,21 @@ gSpecialCommands["$Empty"].mCommand.mExecute = NullFunction
 
 --============================================================================
 --
--- Local variables used for better performance
+-- Performance enhancing variables for quick access
 --
 --============================================================================
 
-local gAscii = format.ASCII
 local gMathAbs = math.abs
 local gTypeDcl = gRemoteComm.types.DCL
-
 local Print = gRemoteComm.partialprint
-
--- TODO Keep placing local variables here as needed
 local gMeasure = dmm.measure
-local gOn = dmm.ON
-local gOff = dmm.OFF
 local gRel = gMeasure.rel
--- USER MUST ENTER THIS
-local gPLC = 60
 
-local gRemoteCommStatus = gRemoteComm.status
-
--- TODO Keep placing getter/setter functions here
+-- Getter and setter functions increase performance
 gAccessors.mSetMeasureFunction      = makesetter(gMeasure, "func")
 gAccessors.mSetMeasureRange         = makesetter(gMeasure, "range")
 gAccessors.mSetMeasureAutorange     = makesetter(gMeasure, "autorange")
 gAccessors.mSetMeasureCount         = makesetter(gMeasure, "count")
-gAccessors.mSetThermistor           = makesetter(gMeasure, "thermistor")
-gAccessors.mSetThermocouple         = makesetter(gMeasure, "thermocouple")
 gAccessors.mSetDetectorBandwidth    = makesetter(gMeasure, "detectorbandwidth")
 gAccessors.mSetRelEnable            = makesetter(gRel, "enable")
 gAccessors.mSetRelLevel             = makesetter(gRel, "level")
@@ -166,8 +180,6 @@ gAccessors.mGetMeasureFunction      = makegetter(gMeasure, "func")
 gAccessors.mGetMeasureRange         = makegetter(gMeasure, "range")
 gAccessors.mGetMeasureAutorange     = makegetter(gMeasure, "autorange")
 gAccessors.mGetMeasureCount         = makegetter(gMeasure, "count")
-gAccessors.mGetThermistor           = makegetter(gMeasure, "thermistor")
-gAccessors.mGetThermocouple         = makegetter(gMeasure, "thermocouple")
 gAccessors.mGetDetectorBandwidth    = makegetter(gMeasure, "detectorbandwidth")
 gAccessors.mGetRelEnable            = makegetter(gRel, "enable")
 gAccessors.mGetRelLevel             = makegetter(gRel, "level")
@@ -178,7 +190,8 @@ gAccessors.mGetAutozeroEnable       = makegetter(gMeasure.autozero, "enable")
 --
 -- Model specific tables
 --
--- These tables store model specific range related information.
+-- These tables store model specific range related information and the state
+-- variables of the emulated instrument.
 --
 --============================================================================
 
@@ -260,9 +273,15 @@ if gPLC == 60 then
     }
 end
 
-local gStateVariables = 
+local gInstrumentState = 
 {
-    Measure_Function,
+    Measure_Function =
+    {
+        value = nil,
+        valueParent = nil,
+        getter = gAccessors.mGetMeasureFunction,
+        setter = gAccessors.mSetMeasureFunction,
+    },
 
     -- APPLIES TO ALL MEASUREMENT FUNCTIONS (pg. 243 manual)
     
@@ -280,25 +299,100 @@ local gStateVariables =
     -- DC VOLTAGE/RATIO VARIABLES
     DC_Voltage = 
     {
-        Null_State,
-        Null_Value,
-        Null_Value_Auto,
-        Range,
-        Range_Auto,
-        Aperture,
-        Aperture_Enabled,
-        Impedance_Auto,
-        NPLC,
-        Zero_Auto,
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Range =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureRange,
+            setter = gAccessors.mSetMeasureRange,
+        },
+        Range_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureAutorange,
+            setter = gAccessors.mSetMeasureAutorange,
+        },
+        NPLC =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureNPLC,
+            setter = gAccessors.mSetMeasureNPLC,
+        },
+        Zero_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetAutozeroEnable,
+            setter = gAccessors.mSetAutozeroEnable,
+        },
     },
     AC_Voltage =
     {
-        Bandwidth,
-        Null_State,
-        Null_Value,
-        Null_Value_Auto,
-        Range,
-        Range_Auto,
+        Bandwidth =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetDetectorBandwidth,
+            setter = gAccessors.mSetDetectorBandwidth,
+        },
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Range =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureRange,
+            setter = gAccessors.mSetMeasureRange,
+        },
+        Range_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureAutorange,
+            setter = gAccessors.mSetMeasureAutorange,
+        },
     },
 }
 
@@ -310,68 +404,79 @@ local gInstrumentAttributes =
         {
             shorthand = "VOLT",
             DMM_Enum = dmm.FUNC_DC_VOLTAGE,
-            stateVariables = gStateVariables.DC_Voltage
+            stateVariables = gInstrumentState.DC_Voltage,
         },
         AC_Voltage = 
         {
             shorthand = "VOLT:AC",
             DMM_Enum = dmm.FUNC_AC_VOLTAGE,
-            stateVariables = gStateVariables.AC_Voltage
+            stateVariables = gInstrumentState.AC_Voltage,
         },
         DC_Current = 
         {
             shorthand = "CURR",
-            DMM_Enum = dmm.FUNC_DC_CURRENT
+            DMM_Enum = dmm.FUNC_DC_CURRENT,
+            stateVariables = null,
         },
         AC_Current = 
         {
             shorthand = "CURR:AC",
-            DMM_Enum = dmm.FUNC_AC_CURRENT
+            DMM_Enum = dmm.FUNC_AC_CURRENT,
+            stateVariables = null,
         },
         Temperature = 
         {
             shorthand = "TEMP",
-            DMM_Enum = dmm.FUNC_TEMPERATURE
+            DMM_Enum = dmm.FUNC_TEMPERATURE,
+            stateVariables = null,
         },
         Resistance = 
         {
             shorthand = "RES",
-            DMM_Enum = dmm.FUNC_RESISTANCE
+            DMM_Enum = dmm.FUNC_RESISTANCE,
+            stateVariables = null,
         },
         FW_Resistance = 
         {
             shorthand = "FRES",
-            DMM_Enum = dmm.FUNC_4W_RESISTANCE
+            DMM_Enum = dmm.FUNC_4W_RESISTANCE,
+            stateVariables = null,
         },
         Diode = 
         {
             shorthand = "DIOD",
-            DMM_Enum = dmm.FUNC_DIODE
+            DMM_Enum = dmm.FUNC_DIODE,
+            stateVariables = null,
         },
         Capacitance = 
         {
             shorthand = "CAP",
-            DMM_Enum = dmm.FUNC_CAPACITANCE
+            DMM_Enum = dmm.FUNC_CAPACITANCE,
+            stateVariables = null,
         },
         Continuity = 
         {
             shorthand = "CONT",
-            DMM_Enum = dmm.FUNC_CONTINUITY
+            DMM_Enum = dmm.FUNC_CONTINUITY,
+            stateVariables = null,
         },
         Frequency = 
         {
             shorthand = "FREQ",
-            DMM_Enum = dmm.FUNC_ACV_FREQUENCY
+            DMM_Enum = dmm.FUNC_ACV_FREQUENCY,
+            stateVariables = null,
         },
         Period = 
         {
             shorthand = "PER",
-            DMM_Enum = dmm.FUNC_ACV_PERIOD
+            DMM_Enum = dmm.FUNC_ACV_PERIOD,
+            stateVariables = null,
         },
         Ratio = 
         {
             shorthand = "VOLT:RAT",
-            DMM_Enum = dmm.FUNC_DCV_RATIO
+            DMM_Enum = dmm.FUNC_DCV_RATIO,
+            stateVariables = gInstrumentState.DC_Voltage,
         },
     },
     OnOff =
@@ -405,39 +510,47 @@ local gInstrumentAttributes =
     },
 }
 
-------------------------------------------------------------------------------
--- ResetDefaults()
--- Sets the smu to 2400 reset defaults
-------------------------------------------------------------------------------
+gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
+gInstrumentState.DC_Voltage.Null_State.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.DC_Voltage.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+gInstrumentState.DC_Voltage.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.DC_Voltage.Zero_Auto.valueParent       = gInstrumentAttributes.OnOff
+gInstrumentState.AC_Voltage.Bandwidth.valueParent       = gInstrumentAttributes.Detector_Bandwidth
+gInstrumentState.AC_Voltage.Null_State.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.AC_Voltage.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+gInstrumentState.AC_Voltage.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
+
+--============================================================================
+--
+-- Reset Functions
+--
+--============================================================================
 
 local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
     ResetDCVoltage = function()
         -- DC VOLTAGE VARIABLES
-        gStateVariables.DC_Voltage.Null_State       = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.Null_Value       = 0
-        gStateVariables.DC_Voltage.Null_Value_Auto  = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.Range            = 1000
-        gStateVariables.DC_Voltage.Range_Auto       = gInstrumentAttributes.OnOff.ON
-        gStateVariables.DC_Voltage.Aperture         = 100E-3
-        gStateVariables.DC_Voltage.Aperture_Enabled = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.Impedance_Auto   = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.DC_Voltage.NPLC             = 10
-        gStateVariables.DC_Voltage.Zero_Auto        = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.DC_Voltage.Null_State.value       = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.DC_Voltage.Null_Value.value       = 0
+        gInstrumentState.DC_Voltage.Null_Value_Auto.value  = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.DC_Voltage.Range.value            = 1000
+        gInstrumentState.DC_Voltage.Range_Auto.value       = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.DC_Voltage.NPLC.value             = 10
+        gInstrumentState.DC_Voltage.Zero_Auto.value        = gInstrumentAttributes.OnOff.ON
     end,
     ResetACVoltage = function()
         -- AC VOLTAGE VARIABLES
-        gStateVariables.AC_Voltage.Bandwidth        = gInstrumentAttributes.Detector_Bandwidth.HZ30
-        gStateVariables.AC_Voltage.Null_State       = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.AC_Voltage.Null_Value       = 0
-        gStateVariables.AC_Voltage.Null_Value_Auto  = gInstrumentAttributes.OnOff.OFF
-        gStateVariables.AC_Voltage.Range            = 10
-        gStateVariables.AC_Voltage.Range_Auto       = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.AC_Voltage.Bandwidth.value        = gInstrumentAttributes.Detector_Bandwidth.HZ30
+        gInstrumentState.AC_Voltage.Null_State.value       = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.AC_Voltage.Null_Value.value       = 0
+        gInstrumentState.AC_Voltage.Null_Value_Auto.value  = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.AC_Voltage.Range.value            = 10
+        gInstrumentState.AC_Voltage.Range_Auto.value       = gInstrumentAttributes.OnOff.ON
     end,
 }
 
 local ResetScriptVariables = function()
-        gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.DC_Voltage
+        gInstrumentState.Measure_Function.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
         gResetFunctionVariables.ResetDCVoltage()
         gResetFunctionVariables.ResetACVoltage()
 end
@@ -445,25 +558,25 @@ end
 local gSetFunctionAttributes = 
 {
     SetDCVoltage = function()
-        gAccessors.mSetRelEnable(gStateVariables.DC_Voltage.Null_State.DMM_Enum)
-        gAccessors.mSetRelLevel(gStateVariables.DC_Voltage.Null_Value)
-        gAccessors.mSetMeasureRange(gStateVariables.DC_Voltage.Range)
-        gAccessors.mSetMeasureAutorange(gStateVariables.DC_Voltage.Range_Auto.DMM_Enum)
-        gAccessors.mSetMeasureNPLC(gStateVariables.DC_Voltage.NPLC)
-        gAccessors.mSetAutozeroEnable(gStateVariables.DC_Voltage.Zero_Auto.DMM_Enum)
+        gAccessors.mSetRelEnable(gInstrumentState.DC_Voltage.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.DC_Voltage.Null_Value.value)
+        gAccessors.mSetMeasureRange(gInstrumentState.DC_Voltage.Range.value)
+        gAccessors.mSetMeasureAutorange(gInstrumentState.DC_Voltage.Range_Auto.value.DMM_Enum)
+        gAccessors.mSetMeasureNPLC(gInstrumentState.DC_Voltage.NPLC.value)
+        gAccessors.mSetAutozeroEnable(gInstrumentState.DC_Voltage.Zero_Auto.value.DMM_Enum)
     end,
     SetACVoltage = function()
-        gAccessors.mSetDetectorBandwidth(gStateVariables.AC_Voltage.Bandwidth.DMM_Enum)
-        gAccessors.mSetRelEnable(gStateVariables.AC_Voltage.Null_State.DMM_Enum)
-        gAccessors.mSetRelLevel(gStateVariables.AC_Voltage.Null_Value)
-        gAccessors.mSetMeasureRange(gStateVariables.AC_Voltage.Range)
-        gAccessors.mSetMeasureAutorange(gStateVariables.AC_Voltage.Range_Auto.DMM_Enum)
+        gAccessors.mSetDetectorBandwidth(gInstrumentState.AC_Voltage.Bandwidth.value.DMM_Enum)
+        gAccessors.mSetRelEnable(gInstrumentState.AC_Voltage.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.AC_Voltage.Null_Value.value)
+        gAccessors.mSetMeasureRange(gInstrumentState.AC_Voltage.Range.value)
+        gAccessors.mSetMeasureAutorange(gInstrumentState.AC_Voltage.Range_Auto.value.DMM_Enum)
     end,
 }
 
 local ResetDMMSettings = function()
     reset()
-    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.DC_Voltage.DMM_Enum)
     gSetFunctionAttributes.SetDCVoltage()
 end
 
@@ -471,6 +584,8 @@ ResetDefaults = function ()
     ResetScriptVariables()
     ResetDMMSettings()
 end
+
+ResetScriptVariables()
 
 --============================================================================
 --
@@ -501,8 +616,8 @@ local gCurrentRoot
         (mPath)     Header Element sub-tree (for path, when next char is a :)
                     (This member is implied. For efficiency, its members are
                     stored directly at this level. See comment below.)
-        mCommand    Execution structure for command (if not a path)
-        mQuery      Execution structure for query (if not a path)
+        mCommand    Command element for a command (if not a path)
+        mQuery      Command element for a query (if not a path)
 
     Command Element:
         mExecute    Execution function.
@@ -512,6 +627,13 @@ local gCurrentRoot
         mOptional   True if parameter is optional. False or nil if not.
         mDefault    Default value.
         mParse      Parser function.
+        
+    Certain mParse parser functions require additional attributes in the 
+    parameter element. For example, gParserTable.ParseParameterName requres 
+    mNames which lists the possible names and their values. 
+    gParserTable.ParseParameterChoice requres mData to list the parameter 
+    choices that can be used, a single parameter that can be a number or 
+    keyword is a common use.
 
     For SCPI based instruments, command path strings are not case sensitive.
     We can utilize this to simplify building the command table structures.
@@ -1692,15 +1814,15 @@ local Init = {}
 
 ------------------------------------------------------------------------------
 --
---  Initialize2400
+--  Initialize34461A
 --
---  Prepare the instrument hardware for 2400 emulation. This function must
---  be called before using Execute2400 or after changing the hardware state
---  between invokations of Engine2400.
+--  Prepare the instrument hardware for 34461A emulation. This function must
+--  be called before using Execute34461A or after changing the hardware state
+--  between invokations of Engine34461A.
 --
 ------------------------------------------------------------------------------
 
-Initialize2400 = function ()
+Initialize34461A = function ()
     gInitialized = true
     reset()
     --ResetSmuSettings()
@@ -1792,14 +1914,56 @@ end
 
 ------------------------------------------------------------------------------
 --
---  Execute2400
+--  ScanUpdatedValues
 --
---  Execute a 2400 SCPI command string.
+--  Check the DMM settings and update local variables
 --
 ------------------------------------------------------------------------------
 
-Execute2400 = function (lCommandMessage)
+local ScanUpdatedValues = function()
+    -- Get the current measure function
+    local lMeasFunc = gInstrumentState.Measure_Function.getter()
+    -- If the measure function variable doesn't match, make it
+    if gInstrumentState.Measure_Function.value.DMM_Enum ~= lMeasFunc then
+        for lKey, lValue in pairs(gInstrumentAttributes.Meas_Functions) do
+            if lValue.DMM_Enum == lMeasFunc then
+                gInstrumentState.Measure_Function.value = lValue
+            end
+        end
+    end
+    -- Iterate through the measure function's state variables and
+    -- make them match the current configuration
+    lMeasFunc = gInstrumentState.Measure_Function
+    for lKey, lValue in pairs(lMeasFunc.value.stateVariables) do
+        if lValue.getter then
+            local lCurrentValue = lValue.getter()
+            -- If the value has enumerations, iterate through those and set appropriately
+            if lValue.valueParent then
+                for _, pValue in pairs(lValue.valueParent) do
+                    if lCurrentValue == pValue.DMM_Enum 
+                    or lCurrentValue == pValue.shorthand then
+                        lValue.value = pValue
+                        break
+                    end
+                end
+            else
+                lValue.value = lCurrentValue
+            end
+        end
+    end
+end
+
+------------------------------------------------------------------------------
+--
+--  Execute34461A
+--
+--  Execute a 34461A SCPI command string.
+--
+------------------------------------------------------------------------------
+
+Execute34461A = function (lCommandMessage)
     if type(lCommandMessage) == "string" then
+        ScanUpdatedValues()
         AddMessage(lCommandMessage, gRemoteComm.types.MESSAGE, 0)
         GetNextCommand()
         ExecuteMessage()
@@ -1810,18 +1974,19 @@ end
 
 ------------------------------------------------------------------------------
 --
---  Engine2400
+--  Engine34461A
 --
---  Intercept command interface communication and process commands as 2400
+--  Intercept command interface communication and process commands as 34461A
 --  SCPI command messages.
 --
 ------------------------------------------------------------------------------
 local UpdateStatusModel
 
-Engine2400 = function ()
+Engine34461A = function ()
     if not gInitialized then
-        Initialize2400()
+        Initialize34461A()
     end
+    ScanUpdatedValues()
     -- override status register
     --RemoteCommStatus.override = 175
     gEngineMode = true
@@ -1834,6 +1999,9 @@ Engine2400 = function ()
         if gParserState.mNextMessage then
             GetNextCommand()
             ExecuteMessage()
+            if gDEVMODE and eventlog.getcount() > 0 then
+                print(eventlog.next())
+            end
         else
             -- Update status model here.
             --UpdateStatusModel()
@@ -1844,10 +2012,6 @@ Engine2400 = function ()
     gRemoteComm.intercept = gRemoteComm.DISABLE
     gEngineMode = false
 end
-
-
---SKIPPED A BUNCH OF FUNCTIONS
-
 
 --============================================================================
 --
@@ -1893,6 +2057,29 @@ gCommandTree =
             {
                 mCommand = {},
             },
+        },
+    },
+    ["DATA"] = 
+    {
+        ["LAST"] =
+        {
+            mQuery = {},
+        },
+        ["POINTS"] =
+        {
+            mQuery = {},
+            ["EVENT"] =
+            {
+                ["THRESHOLD"] =
+                {
+                    mCommand = {},
+                    mQuery = {},
+                },
+            },
+        },
+        ["REMOVE"] =
+        {
+            mQuery = {},
         },
     },
     ["READ"] = 
@@ -2044,26 +2231,33 @@ gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VAL"]   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NPLC"]          = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["ZERO"]["AUTO"]  = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
 
+gCommandTree["DATA"]["POIN"]                            = gCommandTree["DATA"]["POINTS"]
+gCommandTree["DATA"]["POINTS"]["EVEN"]                  = gCommandTree["DATA"]["POINTS"]["EVENT"]
+gCommandTree["DATA"]["POINTS"]["EVENT"]["THR"]          = gCommandTree["DATA"]["POINTS"]["EVENT"]["THRESHOLD"]
+gCommandTree["DATA"]["REM"]                             = gCommandTree["DATA"]["REMOVE"]
+
 -- DEV function
-gPrintCMDTree = function(printString, tree)
-    for key, value in pairs(tree) do
-        if key == "mCommand" or key == "mQuery" then
-            print(
-                string.format(
-                "%s:%s",
-                printString,
-                key
-                )
-            )
-        else
-            gPrintCMDTree(
-                string.format(
+if gDEVMODE then
+    gPrintCMDTree = function(printString, tree)
+        for key, value in pairs(tree) do
+            if key == "mCommand" or key == "mQuery" then
+                print(
+                    string.format(
                     "%s:%s",
                     printString,
                     key
-                ),
-                tree[key]
-            )  
+                    )
+                )
+            else
+                gPrintCMDTree(
+                    string.format(
+                        "%s:%s",
+                        printString,
+                        key
+                    ),
+                    tree[key]
+                )  
+            end
         end
     end
 end
@@ -2524,21 +2718,6 @@ gErrorQueue.PrintErrorEvents = function (lState)
 end
 
 ------------------------------------------------------------------------------
- -- Global variable declarations
- --[[
-        These variables are global to the Persona2400 script but are
-        local outside the script
- --]]
-------------------------------------------------------------------------------
-
-------------------------------------------------------------------------------
--- General utility functions
---[[
-    These functions are used at various places in the script
---]]
------------------------------------------------------------------------------
-
-------------------------------------------------------------------------------
 -- Print functions
 --
 -- These functions are used to format and print data
@@ -2551,15 +2730,47 @@ local FormatNumber = function (lNumber, signed)
     return string.format("%E", lNumber)
 end
 
--- ADD COMMAND FUNCTIONALITY HERE
-local gCurrentRoot
+local InitiateMeasurement = function()
+    
+end
+
+local ChangeMeasFunction = function(measFunction)
+    local lInstMeasFunc = gInstrumentState.Measure_Function
+    lInstMeasFunc.value = measFunction
+    lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
+    -- Iterate through measurement attibutes, checking and setting them
+    for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
+        if lValue.setter then
+            if type(lValue.value) == "number" then
+                lValue.setter(lValue.value)
+            else
+                lValue.setter(lValue.value.DMM_Enum)
+            end
+        end
+    end
+end
+
+--============================================================================
+--
+-- SCPI Command Definitions
+--
+-- This section is where the command tables are populated and command
+-- implemenation function are defined.
+--
+--============================================================================
+
+------------------------------------------------------------------------------
+--
+-- Common Commands
+--
+-----------------------------------------------------------------------------
 
 gCurrentRoot = gCommandTree["*IDN"]
 gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
-            "KEITHLEY INSTRUMENTS,MODEL DMM6500,%s,%s",
-            --"Keysight Technologies,34461A,%s,%s\n",
+            --"KEITHLEY INSTRUMENTS,MODEL DMM6500,%s,%s",
+            "Keysight Technologies,34461A,%s,%s\n",
             localnode.serialno,
             localnode.version
         )
@@ -2567,6 +2778,7 @@ gCurrentRoot.mQuery.mExecute = function()
 end
 gCurrentRoot = gCommandTree["*RST"]
 gCurrentRoot.mCommand.mExecute = function()
+    -- Reset to 34461A defaults
     ResetDefaults()
 end
 -- ABORt
@@ -2580,7 +2792,8 @@ gCurrentRoot = gCommandTree["READ"]
 gCurrentRoot.mQuery.mExecute = function()
     local relLevel = 0
     local measurement = gMeasure.read()
-    if gStateVariables.Measure_Function.stateVariables.Null_Value_Auto == gInstrumentAttributes.OnOff.ON then
+    -- If auto rel is enabled, use first measurement as rel level
+    if gInstrumentState.Measure_Function.value.stateVariables.Null_Value_Auto.value == gInstrumentAttributes.OnOff.ON then
         relLevel = measurement
     end
     print(
@@ -2591,15 +2804,22 @@ gCurrentRoot.mQuery.mExecute = function()
     )
 end
 
+------------------------------------------------------------------------------
+--
+-- CONFigure subsystem
+--
+-----------------------------------------------------------------------------
+
 -- CONFigure?
 gCurrentRoot = gCommandTree["CONFIGURE"]
 gCurrentRoot.mQuery.mExecute = function()
     -- RESOLUTION NOT SUPPORTED CURRENTLY
+    -- Query measure function, range, and resolution
     local lCurrentRange = gAccessors.mGetMeasureRange()
     print(
         string.format(
             "%s %s,%s", 
-            gStateVariables.Measure_Function.shorthand, 
+            gInstrumentState.Measure_Function.value.shorthand, 
             FormatNumber(lCurrentRange, true),
             "nil"
         )
@@ -2634,10 +2854,13 @@ gCurrentRoot.mCommand.mParameters =
     gParserTable.mParseAny
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.AC_Voltage
-    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.AC_Voltage
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to AC measurement defaults, does not inclue common attributes yet
     gResetFunctionVariables.ResetACVoltage()
     gSetFunctionAttributes.SetACVoltage()
+    -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
         if lMeasureRange == "AUTO" then
@@ -2679,10 +2902,13 @@ gCurrentRoot.mCommand.mParameters =
     gParserTable.mParseAny
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.DC_Voltage
-    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to DC measurement defaults, does not inclue common attributes yet
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
+    -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
         if lMeasureRange == "AUTO" then
@@ -2724,10 +2950,13 @@ gCurrentRoot.mCommand.mParameters =
     gParserTable.mParseAny
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gStateVariables.Measure_Function = gInstrumentAttributes.Meas_Functions.Ratio
-    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Ratio
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to DC measurement defaults, does not inclue common attributes yet
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
+    -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
         if lMeasureRange == "AUTO" then
@@ -2740,6 +2969,43 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         end
     end
 end
+
+------------------------------------------------------------------------------
+--
+-- DATA subsystem
+--
+-----------------------------------------------------------------------------
+
+-- DATA:LAST?
+gCurrentRoot = gCommandTree["DATA"]["LAST"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            FormatNumber(gReadingMemory.readingBuffer[gReadingMemory.bufferIndex],true)
+        )
+    )
+end
+-- DATA:POINts?
+gCurrentRoot = gCommandTree["DATA"]["POINTS"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            FormatNumber(gReadingMemory.readingBuffer.n,true)
+        )
+    )
+end
+-- DATA:POINts:EVENt:THReshold <count>
+-- DATA:POINts:EVENt:THReshold?
+-- DATA:REMove? <num_readings> [,WAIT]
+
+
+------------------------------------------------------------------------------
+--
+-- [SENSe:]FUNCtion subsystem
+--
+-----------------------------------------------------------------------------
 
 -- [SENSe:]FUNCtion[:ON] "<function>"
 gCurrentRoot = gCommandTree["SENSE"]["FUNCTION"]["ON"]
@@ -2802,29 +3068,37 @@ gCurrentRoot.mCommand.mParameters =
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lFunction = lParameters[1]
-    gStateVariables.Measure_Function = lFunction
-    gAccessors.mSetMeasureFunction(gStateVariables.Measure_Function.DMM_Enum)
+    -- Set instrument to function configuration
+    ChangeMeasFunction(lFunction)
 end
 -- [SENSe:]FUNCtion[:ON]?
 gCurrentRoot.mQuery.mExecute = function()
     print(
-        gStateVariables.Measure_Function.shorthand
+        gInstrumentState.Measure_Function.value.shorthand
     )
 end
+
+------------------------------------------------------------------------------
+--
+-- [SENSe:]VOLTage:DC subsystem
+--
+-----------------------------------------------------------------------------
 
 -- [SENSe:]VOLTage:DC:NULL[:STATe] {ON|1|OFF|0}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
+    -- Update null state variable
     local lNullState = lParameters[1]
     if lNullState == true then
-        gStateVariables.DC_Voltage.Null_State = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.DC_Voltage.Null_State.value = gInstrumentAttributes.OnOff.ON
     elseif lNullState == false then
-        gStateVariables.DC_Voltage.Null_State = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.DC_Voltage.Null_State.value = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
-    or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
-        gAccessors.mSetRelEnable(gStateVariables.DC_Voltage.Null_State.shorthand)
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+    or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Ratio then
+        gInstrumentState.DC_Voltage.Null_State.setter(gInstrumentState.DC_Voltage.Null_State.value.shorthand)
     end
 end
 -- [SENSe:]VOLTage:DC:NULL[:STATe]?
@@ -2832,7 +3106,7 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.DC_Voltage.Null_State.shorthand
+            gInstrumentState.DC_Voltage.Null_State.value.shorthand
         )
     )
 end
@@ -2842,13 +3116,15 @@ gCurrentRoot["STATE"].mQuery = gCurrentRoot.mQuery
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    local relLevel = lParameters[1]
+    local relLevel  = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.DC_Voltage.Null_Value
     if relLevel <= gOperatingBoundaries.DC_Voltage.Null.max and
        relLevel >= gOperatingBoundaries.DC_Voltage.Null.min then
-        gStateVariables.DC_Voltage.Null_Value = relLevel
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
-        or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
-            gAccessors.mSetRelLevel(relLevel)
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or lMeasFunc.value == gInstrumentAttributes.Meas_Functions.Ratio then
+            lNullVal.setter(relLevel)
         end
     else
         gErrorQueue.Add(-222)
@@ -2859,7 +3135,7 @@ gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDCVNullValueKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintNullValue = lParameters[1]
     if lPrintNullValue == nil then
-        lPrintNullValue = gStateVariables.DC_Voltage.Null_Value
+        lPrintNullValue = gInstrumentState.DC_Voltage.Null_Value.value
     end
     print(
         string.format(
@@ -2873,9 +3149,9 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     if lParameters[1] == true then
-        gStateVariables.DC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.DC_Voltage.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
-        gStateVariables.DC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.DC_Voltage.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
     end
 end
 -- [SENSe:]VOLTage:DC:NULL:VALue:AUTO?
@@ -2883,7 +3159,7 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.DC_Voltage.Null_Value_Auto.shorthand
+            gInstrumentState.DC_Voltage.Null_Value_Auto.value.shorthand
         )
     )
 end
@@ -2892,20 +3168,22 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasureRange = lParameters[1]
+    local lInstAutorange = gInstrumentState.DC_Voltage.Range_Auto
+    local lInstRange = gInstrumentState.DC_Voltage.Range
     if gMathAbs(lMeasureRange) <= 1.10 * lMeasureRange then
         -- Turn autorange off
-        gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
-        -- Set the range
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
-        or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
-            gAccessors.mSetMeasureAutorange(gOff)
-            gAccessors.mSetMeasureRange(lMeasureRange)
-        end
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+        -- Find the appropriate range and set there
         for _, lRange in ipairs(gRangeTable.DC_Voltage) do
             if gMathAbs(lMeasureRange) <= 1.10 * lRange then
-                gStateVariables.DC_Voltage.Range = lRange
-                return
+                lInstRange.value = lRange
+                break
             end
+        end
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Ratio then
+            lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+            lInstRange.setter(lInstRange.value)
         end
     else
         gErrorQueue.Add(-222)
@@ -2916,7 +3194,7 @@ gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDCVoltageRangeKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintRange = lParameters[1]
     if lPrintRange == nil then
-        lPrintRange = gStateVariables.DC_Voltage.Range
+        lPrintRange = gInstrumentState.DC_Voltage.Range.value
     end
     print(
         string.format(
@@ -2929,29 +3207,31 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    local lAutorangeSetter = gAccessors.mSetMeasureAutorange
     local lAutorange = lParameters[1]
+    local lInstAutorange = gInstrumentState.DC_Voltage.Range_Auto
     if lAutorange == "ONCE" then
-        lAutorangeSetter(gInstrumentAttributes.OnOff.ON.shorthand)
-        --TAKE MEASUREMENT
+        -- Turn autorange on
+        lInstAutorange.setter(gInstrumentAttributes.OnOff.ON.shorthand)
+        -- Store some measurement parameters to reset
         local lMeasCount = gAccessors.mGetMeasureCount()
         local lMeasFunc = gAccessors.mGetMeasureFunction()
+        -- Take a single measurement to set
         gAccessors.mSetMeasureCount(1)
         gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.DC_Voltage.DMM_Enum)
         gMeasure.read()
-        gStateVariables.DC_Voltage.Range = gAccessors.mGetMeasureRange()
+        gInstrumentState.DC_Voltage.Range.value = gAccessors.mGetMeasureRange()
         gAccessors.mSetMeasureCount(lMeasCount)
         gAccessors.mSetMeasureFunction(lMeasFunc)
         lAutorange = false
     end
     if lAutorange == true then
-        gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.ON
+        lInstAutorange.value = gInstrumentAttributes.OnOff.ON
     elseif lAutorange == false then
-        gStateVariables.DC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
-    or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
-        lAutorangeSetter(gStateVariables.DC_Voltage.Range_Auto.DMM_Enum)
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+    or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Ratio then
+        lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
     end
 end
 --[SENSe:]VOLTage:DC:RANGe:AUTO?
@@ -2959,7 +3239,7 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.DC_Voltage.Range_Auto.shorthand
+            gInstrumentState.DC_Voltage.Range_Auto.value.shorthand
         )
     )
 end
@@ -2970,10 +3250,10 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lNPLC = lParameters[1]
     if lNPLC <= gOperatingBoundaries.General.Nplc.max 
     and lNPLC >= gOperatingBoundaries.General.Nplc.min then
-        gStateVariables.DC_Voltage.NPLC = lNPLC
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
-        or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
-            gAccessors.mSetMeasureNPLC(lNPLC)
+        gInstrumentState.DC_Voltage.NPLC.value = lNPLC
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Ratio then
+            gInstrumentState.DC_Voltage.NPLC.setter(lNPLC)
         end
     else
         gErrorQueue.Add(-222)
@@ -2984,7 +3264,7 @@ gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNPLCKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lNPLC = lParameters[1]
     if lParameters[1] == nil then
-        lNPLC = gStateVariables.DC_Voltage.NPLC
+        lNPLC = gInstrumentState.DC_Voltage.NPLC.value
     end
     print(
         string.format(
@@ -2998,19 +3278,22 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lAutoZero = lParameters[1]
+    local lInstZeroAuto = gInstrumentState.DC_Voltage.Zero_Auto
+    local lInstFunction = gInstrumentState.Measure_Function
     if lAutoZero == true then
-        gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.ON
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.ON
     elseif lAutoZero == false then
-        gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.OFF
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.OFF
     elseif lAutoZero == "ONCE" then
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage then
+        if lInstFunction.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+        or lInstFunction.value == gInstrumentAttributes.Meas_Functions.Ratio then
             gMeasure.autozero.once()
         end
-        gStateVariables.DC_Voltage.Zero_Auto = gInstrumentAttributes.OnOff.OFF
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.DC_Voltage 
-    or gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.Ratio then
-        gAccessors.mSetAutozeroEnable(gStateVariables.DC_Voltage.Zero_Auto.DMM_Enum)
+    if lInstFunction.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
+    or lInstFunction.value == gInstrumentAttributes.Meas_Functions.Ratio then
+        lInstZeroAuto.setter(lInstZeroAuto.DMM_Enum)
     end
 end
 --[SENSe:]VOLTage[:DC]:ZERO:AUTO?
@@ -3018,30 +3301,36 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.DC_Voltage.Zero_Auto.shorthand
+            gInstrumentState.DC_Voltage.Zero_Auto.value.shorthand
         )
     )
 end
+
+------------------------------------------------------------------------------
+--
+-- [SENSe:]VOLTage:AC subsystem
+--
+-----------------------------------------------------------------------------
 
 --[SENSe:]VOLTage:AC:BANDwidth {<filter>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["BANDWIDTH"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBandwidth}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lDetectorBandwidth = lParameters[1]
-    if lDetectorBandwidth > 300000 
+    if lDetectorBandwidth > 300000
     or lDetectorBandwidth < gOperatingBoundaries.AC_Voltage.Bandwidth.min then
         gErrorQueue.Add(-222)
         return
     end
     if lDetectorBandwidth >= 300 then
-        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ300
+        gInstrumentState.AC_Voltage.Bandwidth.value = gInstrumentAttributes.Detector_Bandwidth.HZ300
     elseif lDetectorBandwidth >= 30 then
-        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ30
+        gInstrumentState.AC_Voltage.Bandwidth.value = gInstrumentAttributes.Detector_Bandwidth.HZ30
     elseif lDetectorBandwidth >= 3 then
-        gStateVariables.AC_Voltage.Bandwidth = gInstrumentAttributes.Detector_Bandwidth.HZ3
+        gInstrumentState.AC_Voltage.Bandwidth.value = gInstrumentAttributes.Detector_Bandwidth.HZ3
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
-        gAccessors.mSetDetectorBandwidth(gStateVariables.AC_Voltage.Bandwidth.DMM_Enum)
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+        gInstrumentState.AC_Voltage.Bandwidth.setter(gInstrumentState.AC_Voltage.Bandwidth.value.DMM_Enum)
     end
 end
 --[SENSe:]VOLTage:AC:BANDwidth? [{MIN|MAX|DEF}]
@@ -3049,7 +3338,7 @@ gCurrentRoot.mQuery.mParameters = {gParserTable.mParseBandwidthKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lBandwidth = lParameters[1]
     if lParameters[1] == nil then
-        lBandwidth = gStateVariables.AC_Voltage.Bandwidth
+        lBandwidth = gInstrumentState.AC_Voltage.Bandwidth.value
     end
     print(
         string.format(
@@ -3063,13 +3352,15 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lNullState = lParameters[1]
+    -- Update null state variable
     if lNullState == true then
-        gStateVariables.AC_Voltage.Null_State = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.AC_Voltage.Null_State.value = gInstrumentAttributes.OnOff.ON
     elseif lNullState == false then
-        gStateVariables.AC_Voltage.Null_State = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.AC_Voltage.Null_State.value = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
-        gAccessors.mSetRelEnable(gStateVariables.AC_Voltage.Null_State.shorthand)
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+        gInstrumentState.AC_Voltage.Null_State.setter(gInstrumentState.AC_Voltage.Null_State.value.shorthand)
     end
 end
 -- [SENSe:]VOLTage:AC:NULL[:STATe]?
@@ -3077,7 +3368,7 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.AC_Voltage.Null_State.shorthand
+            gInstrumentState.AC_Voltage.Null_State.value.shorthand
         )
     )
 end
@@ -3088,11 +3379,13 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local relLevel = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.AC_Voltage.Null_Value
     if relLevel <= gOperatingBoundaries.AC_Voltage.Null.max and
        relLevel >= gOperatingBoundaries.AC_Voltage.Null.min then
-        gStateVariables.AC_Voltage.Null_Value = relLevel
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
-            gAccessors.mSetRelLevel(relLevel)
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+            lNullVal.setter(relLevel)
         end
     else
         gErrorQueue.Add(-222)
@@ -3103,7 +3396,7 @@ gCurrentRoot.mQuery.mParameters = {gParserTable.mParseACVNullValueKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintNullValue = lParameters[1]
     if lPrintNullValue == nil then
-        lPrintNullValue = gStateVariables.AC_Voltage.Null_Value
+        lPrintNullValue = gInstrumentState.AC_Voltage.Null_Value.value
     end
     print(
         string.format(
@@ -3117,9 +3410,9 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     if lParameters[1] == true then
-        gStateVariables.AC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.AC_Voltage.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
-        gStateVariables.AC_Voltage.Null_Value_Auto = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.AC_Voltage.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
     end
 end
 -- [SENSe:]VOLTage:AC:NULL:VALue:AUTO?
@@ -3127,7 +3420,7 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.AC_Voltage.Null_Value_Auto.shorthand
+            gInstrumentState.AC_Voltage.Null_Value_Auto.value.shorthand
         )
     )
 end
@@ -3136,19 +3429,21 @@ gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasureRange = lParameters[1]
+    local lInstAutorange = gInstrumentState.AC_Voltage.Range_Auto
+    local lInstRange = gInstrumentState.AC_Voltage.Range
     if gMathAbs(lMeasureRange) <= 1.10 * lMeasureRange then
         -- Turn autorange off
-        gStateVariables.AC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
-        -- Set the range
-        if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
-            gAccessors.mSetMeasureAutorange(gOff)
-            gAccessors.mSetMeasureRange(lMeasureRange)
-        end
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+        -- Find the appropriate range and set there
         for _, lRange in ipairs(gRangeTable.AC_Voltage) do
             if gMathAbs(lMeasureRange) <= 1.10 * lRange then
-                gStateVariables.AC_Voltage.Range = lRange
-                return
+                lInstRange.value = lRange
+                break
             end
+        end
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+            lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+            gAccessors.mSetMeasureRange(lInstRange.value)
         end
     else
         gErrorQueue.Add(-222)
@@ -3159,7 +3454,7 @@ gCurrentRoot.mQuery.mParameters = {gParserTable.mParseACVoltageRangeKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintRange = lParameters[1]
     if lPrintRange == nil then
-        lPrintRange = gStateVariables.AC_Voltage.Range
+        lPrintRange = gInstrumentState.AC_Voltage.Range.value
     end
     print(
         string.format(
@@ -3172,28 +3467,30 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    local lAutorangeSetter = gAccessors.mSetMeasureAutorange
     local lAutorange = lParameters[1]
+    local lInstAutorange = gInstrumentState.AC_Voltage.Range_Auto
     if lAutorange == "ONCE" then
-        lAutorangeSetter(gInstrumentAttributes.OnOff.ON.shorthand)
-        --TAKE MEASUREMENT
+        -- Turn autorange on
+        lInstAutorange.setter(gInstrumentAttributes.OnOff.ON.shorthand)
+        -- Store some measurement parameters to reset
         local lMeasCount = gAccessors.mGetMeasureCount()
         local lMeasFunc = gAccessors.mGetMeasureFunction()
+        -- Take a single measurement to set
         gAccessors.mSetMeasureCount(1)
         gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.AC_Voltage.DMM_Enum)
         gMeasure.read()
-        gStateVariables.AC_Voltage.Range = gAccessors.mGetMeasureRange()
+        gInstrumentState.AC_Voltage.Range.value = gAccessors.mGetMeasureRange()
         gAccessors.mSetMeasureCount(lMeasCount)
         gAccessors.mSetMeasureFunction(lMeasFunc)
         lAutorange = false
     end
     if lAutorange == true then
-        gStateVariables.AC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.ON
+        lInstAutorange.value = gInstrumentAttributes.OnOff.ON
     elseif lAutorange == false then
-        gStateVariables.AC_Voltage.Range_Auto = gInstrumentAttributes.OnOff.OFF
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
     end
-    if gStateVariables.Measure_Function == gInstrumentAttributes.Meas_Functions.AC_Voltage then
-        lAutorangeSetter(gStateVariables.AC_Voltage.Range_Auto.DMM_Enum)
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage then
+        lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
     end
 end
 --[SENSe:]VOLTage:AC:RANGe:AUTO?
@@ -3201,7 +3498,7 @@ gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
             "%s",
-            gStateVariables.AC_Voltage.Range_Auto.shorthand
+            gInstrumentState.AC_Voltage.Range_Auto.value.shorthand
         )
     )
 end
@@ -3209,8 +3506,14 @@ end
 -- INITIALIZE HERE
 gCurrentRoot = gCommandTree
 
-ResetDefaults()
+Initialize34461A()
 
-Engine2400()
+-- display.prompt(
+--     display.BUTTONS_OK,
+--     "Instrument emulation initialized"
+-- )
+-- beeper.beep(0.15, 680)
+
+Engine34461A()
 
 --endscript
