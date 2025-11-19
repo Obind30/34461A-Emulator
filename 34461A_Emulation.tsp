@@ -26,6 +26,8 @@
 --
 --============================================================================
 
+reset()
+
 local gPLC = 60                 -- Power Line Frequency
 local gDisplayErrors = true     -- Display errors to screen
 local gErrorReadback = false    -- Send errors back when they occur
@@ -72,9 +74,10 @@ local gRemoteComm = ki.remotecomm   -- Internal command that recieves instrument
 --[[BUFFER VARIABLES FOR MEASUREMENTS]]
 local gReadingMemory =
 {
-    bufferSize = 10000,
-    readingBuffer = null,
-    bufferIndex = 0
+    --bufferSize = 10000,
+    bufferSize = 40,
+    readingBuffer = nil,
+    lastRemoved = -1
 }
 gReadingMemory.readingBuffer = buffer.make(gReadingMemory.bufferSize, buffer.STYLE_STANDARD)
 gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
@@ -165,26 +168,42 @@ local Print = gRemoteComm.partialprint
 local gMeasure = dmm.measure
 local gRel = gMeasure.rel
 
+local gNan = 9.91e37
+local gInf = 9.90e37
+local gEpsilon = 5e-7
+
+local gLastMeasurement =
+{
+    value = gNan,
+    index = 1,
+    -- Make sure to update this accordingly
+    units = "VDC",
+}
+
 -- Getter and setter functions increase performance
 gAccessors.mSetMeasureFunction      = makesetter(gMeasure, "func")
 gAccessors.mSetMeasureRange         = makesetter(gMeasure, "range")
 gAccessors.mSetMeasureAutorange     = makesetter(gMeasure, "autorange")
 gAccessors.mSetMeasureCount         = makesetter(gMeasure, "count")
+gAccessors.mSetMeasureAutodelay     = makesetter(gMeasure, "autodelay")
 gAccessors.mSetDetectorBandwidth    = makesetter(gMeasure, "detectorbandwidth")
 gAccessors.mSetRelEnable            = makesetter(gRel, "enable")
 gAccessors.mSetRelLevel             = makesetter(gRel, "level")
 gAccessors.mSetMeasureNPLC          = makesetter(gMeasure, "nplc")
 gAccessors.mSetAutozeroEnable       = makesetter(gMeasure.autozero, "enable")
+gAccessors.mSetExtinSlope           = makesetter(trigger.extin, "edge")
 
 gAccessors.mGetMeasureFunction      = makegetter(gMeasure, "func")
 gAccessors.mGetMeasureRange         = makegetter(gMeasure, "range")
 gAccessors.mGetMeasureAutorange     = makegetter(gMeasure, "autorange")
 gAccessors.mGetMeasureCount         = makegetter(gMeasure, "count")
+gAccessors.mGetMeasureAutodelay     = makegetter(gMeasure, "autodelay")
 gAccessors.mGetDetectorBandwidth    = makegetter(gMeasure, "detectorbandwidth")
 gAccessors.mGetRelEnable            = makegetter(gRel, "enable")
 gAccessors.mGetRelLevel             = makegetter(gRel, "level")
 gAccessors.mGetMeasureNPLC          = makegetter(gMeasure, "nplc")
 gAccessors.mGetAutozeroEnable       = makegetter(gMeasure.autozero, "enable")
+gAccessors.mGetExtinSlope           = makegetter(trigger.extin, "edge")
 
 --============================================================================
 --
@@ -261,7 +280,25 @@ local gOperatingBoundaries =
             max = 12,
             def = 10,
             min = 0.0005
-        }
+        },
+        Sample_Count =
+        {
+            max = 1000000,
+            def = 1,
+            min = 1,
+        },
+        Trigger_Count =
+        {
+            max = 1000000,
+            def = 1,
+            min = 1,
+        },
+        Trigger_Delay =
+        {
+            max = 3600,
+            def = 1,
+            min = 0,
+        },
     },
 }
 if gPLC == 60 then
@@ -281,6 +318,55 @@ local gInstrumentState =
         valueParent = nil,
         getter = gAccessors.mGetMeasureFunction,
         setter = gAccessors.mSetMeasureFunction,
+    },
+
+    General = 
+    {
+        Trigger_State = "IDLE",
+        Sample_Count =
+        {
+            value = nil,
+            valueParent = nil,
+            -- Sample count handled in trigger model instead
+            getter = nil,
+            setter = nil,
+        },
+        Trigger_Count = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Trigger_Delay_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureAutodelay,
+            setter = gAccessors.mSetMeasureAutodelay,
+        },
+        Trigger_Delay =
+        {
+            value = nil,
+            valueParent = nil,
+            -- Delay handled in trigger model
+            getter = nil,
+            setter = nil,
+        },
+        Trigger_Slope =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetExtinSlope,
+            setter = gAccessors.mSetExtinSlope,
+        },
+        Trigger_Source =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
     },
 
     -- APPLIES TO ALL MEASUREMENT FUNCTIONS (pg. 243 manual)
@@ -405,12 +491,14 @@ local gInstrumentAttributes =
             shorthand = "VOLT",
             DMM_Enum = dmm.FUNC_DC_VOLTAGE,
             stateVariables = gInstrumentState.DC_Voltage,
+            units = "VDC",
         },
         AC_Voltage = 
         {
             shorthand = "VOLT:AC",
             DMM_Enum = dmm.FUNC_AC_VOLTAGE,
             stateVariables = gInstrumentState.AC_Voltage,
+            units = "VAC",
         },
         DC_Current = 
         {
@@ -481,14 +569,29 @@ local gInstrumentAttributes =
     },
     OnOff =
     {
-        ON = {
+        ON = 
+        {
             DMM_Enum = dmm.ON,
             shorthand = 1,
         },
-        OFF = {
+        OFF = 
+        {
             DMM_Enum = dmm.OFF,
             shorthand = 0,
         },
+    },
+    Auto_Delay =
+    {
+        ON = 
+        {
+            DMM_Enum = dmm.DELAY_ON,
+            shorthand = 1,
+        },
+        OFF = 
+        {
+            DMM_Enum = dmm.DELAY_OFF,
+            shorthand = 0,
+        }
     },
     Detector_Bandwidth =
     {
@@ -508,13 +611,31 @@ local gInstrumentAttributes =
             shorthand = 300,
         },
     },
+    Trigger_Slope =
+    {
+        Positive =
+        {
+            DMM_Enum = trigger.EDGE_RISING,
+            shorthand = "POS",
+        },
+        Negative =
+        {
+            DMM_Enum = trigger.EDGE_FALLING,
+            shorthand = "NEG",
+        },
+    }
 }
 
 gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
+
+gInstrumentState.General.Trigger_Delay_Auto.valueParent = gInstrumentAttributes.Auto_Delay
+gInstrumentState.General.Trigger_Slope.valueParent      = gInstrumentAttributes.Trigger_Slope
+
 gInstrumentState.DC_Voltage.Null_State.valueParent      = gInstrumentAttributes.OnOff
 gInstrumentState.DC_Voltage.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
 gInstrumentState.DC_Voltage.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
 gInstrumentState.DC_Voltage.Zero_Auto.valueParent       = gInstrumentAttributes.OnOff
+
 gInstrumentState.AC_Voltage.Bandwidth.valueParent       = gInstrumentAttributes.Detector_Bandwidth
 gInstrumentState.AC_Voltage.Null_State.valueParent      = gInstrumentAttributes.OnOff
 gInstrumentState.AC_Voltage.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
@@ -528,35 +649,48 @@ gInstrumentState.AC_Voltage.Range_Auto.valueParent      = gInstrumentAttributes.
 
 local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
+    ResetGeneral = function()
+        gInstrumentState.General.Sample_Count.value         = 1
+        gInstrumentState.General.Trigger_Count.value        = 1
+        gInstrumentState.General.Trigger_Delay_Auto.value   = gInstrumentAttributes.Auto_Delay.ON
+        gInstrumentState.General.Trigger_Delay.value        = 1
+        gInstrumentState.General.Trigger_Slope.value        = gInstrumentAttributes.Trigger_Slope.Negative
+        gInstrumentState.General.Trigger_Source.value       = "IMM"
+    end,
     ResetDCVoltage = function()
         -- DC VOLTAGE VARIABLES
-        gInstrumentState.DC_Voltage.Null_State.value       = gInstrumentAttributes.OnOff.OFF
-        gInstrumentState.DC_Voltage.Null_Value.value       = 0
-        gInstrumentState.DC_Voltage.Null_Value_Auto.value  = gInstrumentAttributes.OnOff.OFF
-        gInstrumentState.DC_Voltage.Range.value            = 1000
-        gInstrumentState.DC_Voltage.Range_Auto.value       = gInstrumentAttributes.OnOff.ON
-        gInstrumentState.DC_Voltage.NPLC.value             = 10
-        gInstrumentState.DC_Voltage.Zero_Auto.value        = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.DC_Voltage.Null_State.value        = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.DC_Voltage.Null_Value.value        = 0
+        gInstrumentState.DC_Voltage.Null_Value_Auto.value   = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.DC_Voltage.Range.value             = 1000
+        gInstrumentState.DC_Voltage.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.DC_Voltage.NPLC.value              = 10
+        gInstrumentState.DC_Voltage.Zero_Auto.value         = gInstrumentAttributes.OnOff.ON
     end,
     ResetACVoltage = function()
         -- AC VOLTAGE VARIABLES
-        gInstrumentState.AC_Voltage.Bandwidth.value        = gInstrumentAttributes.Detector_Bandwidth.HZ30
-        gInstrumentState.AC_Voltage.Null_State.value       = gInstrumentAttributes.OnOff.OFF
-        gInstrumentState.AC_Voltage.Null_Value.value       = 0
-        gInstrumentState.AC_Voltage.Null_Value_Auto.value  = gInstrumentAttributes.OnOff.OFF
-        gInstrumentState.AC_Voltage.Range.value            = 10
-        gInstrumentState.AC_Voltage.Range_Auto.value       = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.AC_Voltage.Bandwidth.value         = gInstrumentAttributes.Detector_Bandwidth.HZ30
+        gInstrumentState.AC_Voltage.Null_State.value        = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.AC_Voltage.Null_Value.value        = 0
+        gInstrumentState.AC_Voltage.Null_Value_Auto.value   = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.AC_Voltage.Range.value             = 10
+        gInstrumentState.AC_Voltage.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
     end,
 }
 
 local ResetScriptVariables = function()
         gInstrumentState.Measure_Function.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
+        gResetFunctionVariables.ResetGeneral()
         gResetFunctionVariables.ResetDCVoltage()
         gResetFunctionVariables.ResetACVoltage()
 end
 
 local gSetFunctionAttributes = 
 {
+    SetGeneral = function()
+        gAccessors.mSetMeasureAutodelay(gInstrumentState.General.Trigger_Delay_Auto.value.DMM_Enum)
+        gAccessors.mSetExtinSlope(gInstrumentState.General.Trigger_Slope.value.DMM_Enum)
+    end,
     SetDCVoltage = function()
         gAccessors.mSetRelEnable(gInstrumentState.DC_Voltage.Null_State.value.DMM_Enum)
         gAccessors.mSetRelLevel(gInstrumentState.DC_Voltage.Null_Value.value)
@@ -577,6 +711,7 @@ local gSetFunctionAttributes =
 local ResetDMMSettings = function()
     reset()
     gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.DC_Voltage.DMM_Enum)
+    gSetFunctionAttributes.SetGeneral()
     gSetFunctionAttributes.SetDCVoltage()
 end
 
@@ -1392,6 +1527,77 @@ gParserTable.mParseBandwidth =
         gParserTable.mParseBandwidthKeywords
     }
 }
+gParserTable.mParseSampleCountKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.General.Sample_Count.min,
+        ["MINIMUM"]     = gOperatingBoundaries.General.Sample_Count.min,
+        ["MAX"]         = gOperatingBoundaries.General.Sample_Count.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.General.Sample_Count.max,
+        ["DEF"]         = gOperatingBoundaries.General.Sample_Count.def,
+        ["DEFAULT"]     = gOperatingBoundaries.General.Sample_Count.def,
+    }
+}
+gParserTable.mParseSampleCount =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseSampleCountKeywords
+    }
+}
+gParserTable.mParseTriggerDelayKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.General.Trigger_Delay.min,
+        ["MINIMUM"]     = gOperatingBoundaries.General.Trigger_Delay.min,
+        ["MAX"]         = gOperatingBoundaries.General.Trigger_Delay.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.General.Trigger_Delay.max,
+        ["DEF"]         = gOperatingBoundaries.General.Trigger_Delay.def,
+        ["DEFAULT"]     = gOperatingBoundaries.General.Trigger_Delay.def,
+    }
+}
+gParserTable.mParseTriggerDelay =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseTriggerDelayKeywords
+    }
+}
+gParserTable.mParseTriggerCountKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.General.Trigger_Count.min,
+        ["MINIMUM"]     = gOperatingBoundaries.General.Trigger_Count.min,
+        ["MAX"]         = gOperatingBoundaries.General.Trigger_Count.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.General.Trigger_Count.max,
+        ["DEF"]         = gOperatingBoundaries.General.Trigger_Count.def,
+        ["DEFAULT"]     = gOperatingBoundaries.General.Trigger_Count.def,
+        ["INF"]         = gInf,
+        ["INFINITY"]    = gInf,
+    }
+}
+gParserTable.mParseTriggerCount =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseTriggerCountKeywords
+    }
+}
 
 ------------------------------------------------------------------------------
 --
@@ -1824,8 +2030,8 @@ local Init = {}
 
 Initialize34461A = function ()
     gInitialized = true
-    reset()
-    --ResetSmuSettings()
+    --reset()
+    ResetDefaults()
     format.byteorder = format.NORMAL
 end
 
@@ -2082,9 +2288,42 @@ gCommandTree =
             mQuery = {},
         },
     },
+    ["DEV"] = 
+    {
+        ["EXIT"] =
+        {
+            mCommand = {},
+        }
+    },
+    ["FETCH"] =
+    {
+        mQuery = {},
+    },
+    ["INITIATE"] =
+    {
+        mQuery = {},
+        mCommand = {},
+        ["IMMEDIATE"] =
+        {
+            mQuery = {},
+            mCommand = {},
+        },
+    },
+    ["R"] =
+    {
+        mQuery = {}
+    },
     ["READ"] = 
     {
-        mQuery ={},
+        mQuery = {},
+    },
+    ["SAMPLE"] =
+    {
+        ["COUNT"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        },
     },
     ["SENSE"] =
     {
@@ -2192,11 +2431,44 @@ gCommandTree =
             },
         },
     },
+    ["TRIGGER"] =
+    {
+        ["COUNT"] =
+        {
+            mQuery = {},
+            mCommand = {},
+        },
+        ["DELAY"] =
+        {
+            mQuery = {},
+            mCommand = {},
+            ["AUTO"] =
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+        },
+        ["SLOPE"] =
+        {
+            mQuery = {},
+            mCommand = {},
+        },
+        ["SOURCE"] =
+        {
+            mQuery = {},
+            mCommand = {},
+        },
+    },
 }
 
 -- ADD ABBREVIATION ALIASES HERE
 gCommandTree["ABOR"]                                    = gCommandTree["ABORT"]
 gCommandTree["CONF"]                                    = gCommandTree["CONFIGURE"]
+gCommandTree["FET"]                                     = gCommandTree["FETCH"]
+gCommandTree["INIT"]                                    = gCommandTree["INITIATE"]
+gCommandTree["INITIATE"]["IMMEDIATE"].mQuery            = gCommandTree["INITIATE"].mQuery
+gCommandTree["INITIATE"]["IMMEDIATE"].mCommand          = gCommandTree["INITIATE"].mCommand
+gCommandTree["INITIATE"]["IMM"]                         = gCommandTree["INITIATE"]["IMMEDIATE"]
 
 gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
@@ -2208,6 +2480,8 @@ gCommandTree["CONFIGURE"]["DC"]["RAT"]                  = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RATIO"]           = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RAT"]             = gCommandTree["CONFIGURE"]["RATIO"]
 
+gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
+gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
 
 gCommandTree["SENS"]                                    = gCommandTree["SENSE"]
 
@@ -2235,6 +2509,12 @@ gCommandTree["DATA"]["POIN"]                            = gCommandTree["DATA"]["
 gCommandTree["DATA"]["POINTS"]["EVEN"]                  = gCommandTree["DATA"]["POINTS"]["EVENT"]
 gCommandTree["DATA"]["POINTS"]["EVENT"]["THR"]          = gCommandTree["DATA"]["POINTS"]["EVENT"]["THRESHOLD"]
 gCommandTree["DATA"]["REM"]                             = gCommandTree["DATA"]["REMOVE"]
+
+gCommandTree["TRIG"]                                    = gCommandTree["TRIGGER"]
+gCommandTree["TRIGGER"]["COUN"]                         = gCommandTree["TRIGGER"]["COUNT"]
+gCommandTree["TRIGGER"]["DEL"]                          = gCommandTree["TRIGGER"]["DELAY"]
+gCommandTree["TRIGGER"]["SLOP"]                         = gCommandTree["TRIGGER"]["SLOPE"]
+gCommandTree["TRIGGER"]["SOUR"]                         = gCommandTree["TRIGGER"]["SOURCE"]
 
 -- DEV function
 if gDEVMODE then
@@ -2724,14 +3004,29 @@ end
 --
 -----------------------------------------------------------------------------
 local FormatNumber = function (lNumber, signed)
-    if signed then
+    if signed and lNumber >= 0 then
         return string.format("+%E", lNumber)
     end
     return string.format("%E", lNumber)
 end
 
-local InitiateMeasurement = function()
-    
+local FormatBuffer = function (lStart, lCount, remove)
+    local lBuffer = gReadingMemory.readingBuffer
+
+    -- print(lStart)
+    local lFormatString = FormatNumber(lBuffer.readings[lStart])
+    for i=1, lCount-1 do
+        lFormatString = lFormatString .. "," .. FormatNumber(lBuffer.readings[math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1], true)
+        --Printing timestamps to ensure continuity
+        --print(gReadingMemory.readingBuffer.relativetimestamps[math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1])
+        --print(math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1)
+    end
+    if remove then
+        --print(math.mod(lStart+(lCount-1-1), gReadingMemory.bufferSize)+1)
+        gReadingMemory.lastRemoved = lBuffer.relativetimestamps[math.mod(lStart+(lCount-1-1), gReadingMemory.bufferSize)+1]
+        --print(gReadingMemory.lastRemoved)
+    end
+    return lFormatString
 end
 
 local ChangeMeasFunction = function(measFunction)
@@ -2748,6 +3043,92 @@ local ChangeMeasFunction = function(measFunction)
             end
         end
     end
+end
+
+local FindLastDataPoint = function()
+    if gReadingMemory.readingBuffer.n == 0 then
+        gLastMeasurement.index = 1
+        gLastMeasurement.value = gNan
+        return
+    end
+    if gLastMeasurement.index-gReadingMemory.readingBuffer.n == 0 then
+        gLastMeasurement.value = gReadingMemory.readingBuffer.readings[gLastMeasurement.index]
+        return
+    end
+    local lastIndex = gLastMeasurement.index
+    local lastTime = gReadingMemory.readingBuffer.relativetimestamps[gLastMeasurement.index]
+    gLastMeasurement.index = math.mod(gLastMeasurement.index, gReadingMemory.bufferSize)+1
+    local currTime = gReadingMemory.readingBuffer.relativetimestamps[gLastMeasurement.index]
+    while math.mod(gLastMeasurement.index, gReadingMemory.bufferSize)+1 <= gReadingMemory.readingBuffer.n and lastTime <= currTime do
+        lastIndex = gLastMeasurement.index
+        gLastMeasurement.index = math.mod(gLastMeasurement.index, gReadingMemory.bufferSize)+1
+        lastTime = currTime
+        currTime = gReadingMemory.readingBuffer.relativetimestamps[gLastMeasurement.index]
+    end
+    if lastTime > currTime then
+        gLastMeasurement.index = lastIndex
+    end
+    gLastMeasurement.value = gReadingMemory.readingBuffer.readings[gLastMeasurement.index]
+end
+
+--============================================================================
+--
+-- Measurement Trigger Model
+--
+--============================================================================
+
+local gTriggerModel = {
+    tmInitialized = false
+}
+
+gTriggerModel.InitializeTM = function()
+    -- Trigger Delay Timer
+    trigger.timer[1].clear()
+    trigger.timer[1].count = 1
+    -- Stimulus is the trigger model event
+    trigger.timer[1].start.stimulus = trigger.EVENT_NOTIFY1
+    -- 0 if autodelay
+    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
+        trigger.timer[1].delay = gInstrumentState.General.Trigger_Delay.value
+    end
+    trigger.timer[1].enable = trigger.ON
+
+    local tm = trigger.model
+    tm.load("Empty")
+    if gInstrumentState.General.Trigger_Source.value == "EXT" then
+        tm.setblock(1, trigger.BLOCK_WAIT, trigger.EVENT_EXTERNAL, trigger.CLEAR_ENTER)
+    elseif gInstrumentState.General.Trigger_Source.value == "IMM" then
+        tm.setblock(1, trigger.BLOCK_NOP)
+    end
+    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
+        -- Notify trigger delay timer to start
+        tm.setblock(2, trigger.BLOCK_NOTIFY, trigger.EVENT_NOTIFY1)
+        -- Wait for trigger delay timer
+        tm.setblock(3, trigger.BLOCK_WAIT, trigger.EVENT_TIMER1)
+    else
+        tm.setblock(2, trigger.BLOCK_NOP)
+        tm.setblock(3, trigger.BLOCK_NOP)
+    end
+
+    -- Take measurement
+    tm.setblock(4, trigger.BLOCK_MEASURE_DIGITIZE, gReadingMemory.readingBuffer, 1)
+    
+    -- Loop back to notify
+    tm.setblock(5, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Sample_Count.value, 2)
+    -- Loop back to wait
+    tm.setblock(6, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Trigger_Count.value, 1)
+
+    gTriggerModel.tmInitialized = true
+end
+
+gTriggerModel.InitiateMeasurements = function()
+    if not gTriggerModel.tmInitialized then
+        gTriggerModel.InitializeTM()
+    end
+    gLastMeasurement.index = 1
+    gLastMeasurement.value = gNan
+    gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
+    trigger.model.initiate()
 end
 
 --============================================================================
@@ -2782,26 +3163,79 @@ gCurrentRoot.mCommand.mExecute = function()
     ResetDefaults()
 end
 -- ABORt
--- PLACEHOLDER TO EXIT SCRIPT
 gCurrentRoot = gCommandTree["ABORT"]
 gCurrentRoot.mCommand.mExecute = function()
-    exit()
+    trigger.model.abort()
+    -- Find some wait to break waitcompletes and waiting for measurements
+end
+-- INITiate[:IMMediate]
+gCurrentRoot = gCommandTree["INITIATE"]
+gCurrentRoot.mCommand.mExecute = function()
+    gInstrumentState.General.Trigger_State = "WAIT"
+    gReadingMemory.readingBuffer.clear()
+    gReadingMemory.lastRemoved = -1
+    gTriggerModel.InitiateMeasurements()
+end
+-- R? [<max_readings>]
+gCurrentRoot = gCommandTree["R"]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNRfOptional}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    if lParameters[1] >= 1 and lParameters[1] <= 2000000 then
+        local lMaxReadings = gReadingMemory.bufferSize
+        if lParameters[1] then
+            lMaxReadings = lParameters[1]
+        end
+
+        local lStart = gReadingMemory.readingBuffer.startindex
+        if lStart == 0 then
+            return
+        end
+        while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+            lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+            if lStart == gReadingMemory.readingBuffer.startindex then
+                return
+            end
+        end
+
+        local lDataAvailable = gReadingMemory.readingBuffer.endindex - lStart + 1
+        if lDataAvailable == 0 then 
+            lDataAvailable = gReadingMemory.bufferSize
+        end
+
+        print(FormatBuffer(lStart, math.min(lMaxReadings,lDataAvailable), true))
+    else
+        gErrorQueue.Add(-222)
+    end
 end
 -- READ?
 gCurrentRoot = gCommandTree["READ"]
 gCurrentRoot.mQuery.mExecute = function()
-    local relLevel = 0
-    local measurement = gMeasure.read()
-    -- If auto rel is enabled, use first measurement as rel level
-    if gInstrumentState.Measure_Function.value.stateVariables.Null_Value_Auto.value == gInstrumentAttributes.OnOff.ON then
-        relLevel = measurement
+    gInstrumentState.General.Trigger_State = "WAIT"
+    gReadingMemory.readingBuffer.clear()
+    gReadingMemory.lastRemoved = -1
+    gTriggerModel.InitiateMeasurements()
+    waitcomplete() -- May need to change to only wait for trigger model
+    print(FormatBuffer(gReadingMemory.readingBuffer.startindex, gReadingMemory.readingBuffer.n, true))
+end
+-- FETch?
+gCurrentRoot = gCommandTree["FETCH"]
+gCurrentRoot.mQuery.mExecute = function()
+    waitcomplete() -- May need to change to only wait for trigger model
+    local lStart = gReadingMemory.readingBuffer.startindex
+    while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+        print(gReadingMemory.readingBuffer.relativetimestamps[lStart], gReadingMemory.lastRemoved)
+        lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+        if lStart == gReadingMemory.readingBuffer.startindex then
+            return
+        end
     end
-    print(
-        string.format(
-            "%s",
-            FormatNumber(measurement-relLevel, true)
-        )
-    )
+    print(FormatBuffer(lStart, gReadingMemory.readingBuffer.n, false))
+end
+
+gCurrentRoot = gCommandTree["DEV"]["EXIT"]
+gCurrentRoot.mCommand.mExecute = function()
+    trigger.model.abort()
+    exit()
 end
 
 ------------------------------------------------------------------------------
@@ -2979,10 +3413,12 @@ end
 -- DATA:LAST?
 gCurrentRoot = gCommandTree["DATA"]["LAST"]
 gCurrentRoot.mQuery.mExecute = function()
+    FindLastDataPoint()
     print(
         string.format(
-            "%s",
-            FormatNumber(gReadingMemory.readingBuffer[gReadingMemory.bufferIndex],true)
+            "%s %s",
+            FormatNumber(gReadingMemory.readingBuffer[gReadingMemory.readingBuffer.endindex],true),
+            gLastMeasurement.units
         )
     )
 end
@@ -2999,7 +3435,122 @@ end
 -- DATA:POINts:EVENt:THReshold <count>
 -- DATA:POINts:EVENt:THReshold?
 -- DATA:REMove? <num_readings> [,WAIT]
+gCurrentRoot = gCommandTree["DATA"]["REMOVE"]
+gCurrentRoot.mQuery.mParameters =
+{
+    gParserTable.mParseNRf,
+    {
+        mParse = gParserTable.ParseParameterName,
+        mOptional = true,
+        mNames =
+        {
+            ["WAIT"] = "WAIT"
+        }
+    }
+}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lNumReadings = lParameters[1]
+    local lWait = lParameters[2] == "WAIT"
+    local lStart = gReadingMemory.readingBuffer.startindex
+    -- Check that there is data in buffer
+    if lStart == 0 then
+        gErrorQueue.Add(-222)
+        return
+    end
+    if lNumReadings <= gReadingMemory.bufferSize then
+        if lWait then
+            -- Calculate the readings available and the number of removed data points
+            local lReadingsAvail = gReadingMemory.readingBuffer.n
+            local lRemovedPoints = 0
+            -- While timestamp is less than the last removed timestamp
+            while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+                lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+                lRemovedPoints = lRemovedPoints+1
+                -- If all data points are removed
+                if lStart == gReadingMemory.readingBuffer.startindex then
+                    return
+                end
+            end
+            lReadingsAvail = gReadingMemory.readingBuffer.n - lRemovedPoints
+            -- Wait for readings to accumulate
+            while lReadingsAvail < lNumReadings do
+                -- Calculate the readings available and the number of removed data points
+                lReadingsAvail = gReadingMemory.readingBuffer.n
+                lRemovedPoints = 0
+                -- While timestamp is less than the last removed timestamp
+                while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+                    lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+                    lRemovedPoints = lRemovedPoints+1
+                    -- If all data points are removed
+                    if lStart == gReadingMemory.readingBuffer.startindex then
+                        return
+                    end
+                end
+                lReadingsAvail = gReadingMemory.readingBuffer.n - lRemovedPoints
+                -- Check that trigger model isn't idle
+                if trigger.model.state() == trigger.STATE_IDLE and lReadingsAvail < lNumReadings then
+                    return
+                end
+                delay(1e-3)
+            end
+        else
+            -- Calculate the readings available, not counting deleted readings
+            local lReadingsAvail = gReadingMemory.readingBuffer.n
+            -- While the current index is deleted
+            while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+                -- Increment Start index, decrement available readings
+                lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+                lReadingsAvail = lReadingsAvail-1
+                -- If there are no non-removed readings
+                if lStart == gReadingMemory.readingBuffer.startindex then
+                    gErrorQueue.Add(-222)
+                    return
+                end
+            end
+            if lNumReadings > lReadingsAvail then
+                gErrorQueue.Add(-222) -- Change to appropriate number
+                return
+            end
+        end
+        -- lStartIndex = gReadingMemory.readingBuffer.startindex
+        print(FormatBuffer(lStart,lNumReadings, true))
+    else
+        gErrorQueue.Add(-222)
+    end
+end
 
+------------------------------------------------------------------------------
+--
+-- SAMPle subsystem
+--
+-----------------------------------------------------------------------------
+
+-- SAMPle:COUNt {<count>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SAMPLE"]["COUNT"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseSampleCount}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    if lParameters[1] >= gOperatingBoundaries.General.Sample_Count.min
+    and lParameters[1] <= gOperatingBoundaries.General.Sample_Count.max then
+        gInstrumentState.General.Sample_Count.value = lParameters[1]
+        gTriggerModel.tmInitialized = false
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- SAMPle:COUNt? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseSampleCountKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local sampleCount = lParameters[1]
+    if sampleCount == nil then
+        sampleCount = gInstrumentState.General.Sample_Count.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(sampleCount, true)
+        )
+    )
+end
 
 ------------------------------------------------------------------------------
 --
@@ -3130,7 +3681,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         gErrorQueue.Add(-222)
     end    
 end
---[SENSe:]VOLTage:DC:NULL:VALue? [{MIN|MAX|DEF}]
+-- [SENSe:]VOLTage:DC:NULL:VALue? [{MIN|MAX|DEF}]
 gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDCVNullValueKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintNullValue = lParameters[1]
@@ -3203,7 +3754,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
         )
     )
 end
---[SENSe:]VOLTage:DC:RANGe:AUTO {OFF|ON|ONCE}
+-- [SENSe:]VOLTage:DC:RANGe:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
@@ -3234,7 +3785,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
     end
 end
---[SENSe:]VOLTage:DC:RANGe:AUTO?
+-- [SENSe:]VOLTage:DC:RANGe:AUTO?
 gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
@@ -3243,7 +3794,7 @@ gCurrentRoot.mQuery.mExecute = function()
         )
     )
 end
---[SENSe:]VOLTage[:DC]:NPLC {<PLC>|MIN|MAX|DEF}
+-- [SENSe:]VOLTage[:DC]:NPLC {<PLC>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
@@ -3259,7 +3810,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         gErrorQueue.Add(-222)
     end
 end
---[SENSe:]VOLTage[:DC]:NPLC? [{MIN|MAX|DEF}]
+-- [SENSe:]VOLTage[:DC]:NPLC? [{MIN|MAX|DEF}]
 gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNPLCKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lNPLC = lParameters[1]
@@ -3273,7 +3824,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
         )
     )
 end
---[SENSe:]VOLTage[:DC]:ZERO:AUTO {OFF|ON|ONCE}
+-- [SENSe:]VOLTage[:DC]:ZERO:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
@@ -3296,7 +3847,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         lInstZeroAuto.setter(lInstZeroAuto.DMM_Enum)
     end
 end
---[SENSe:]VOLTage[:DC]:ZERO:AUTO?
+-- [SENSe:]VOLTage[:DC]:ZERO:AUTO?
 gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
@@ -3312,7 +3863,7 @@ end
 --
 -----------------------------------------------------------------------------
 
---[SENSe:]VOLTage:AC:BANDwidth {<filter>|MIN|MAX|DEF}
+-- [SENSe:]VOLTage:AC:BANDwidth {<filter>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["BANDWIDTH"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBandwidth}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
@@ -3333,7 +3884,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         gInstrumentState.AC_Voltage.Bandwidth.setter(gInstrumentState.AC_Voltage.Bandwidth.value.DMM_Enum)
     end
 end
---[SENSe:]VOLTage:AC:BANDwidth? [{MIN|MAX|DEF}]
+-- [SENSe:]VOLTage:AC:BANDwidth? [{MIN|MAX|DEF}]
 gCurrentRoot.mQuery.mParameters = {gParserTable.mParseBandwidthKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lBandwidth = lParameters[1]
@@ -3374,7 +3925,7 @@ gCurrentRoot.mQuery.mExecute = function()
 end
 gCurrentRoot["STATE"].mCommand = gCurrentRoot.mCommand
 gCurrentRoot["STATE"].mQuery = gCurrentRoot.mQuery
---[SENSe:]VOLTage:AC:NULL:VALue {<value>|MIN|MAX|DEF}
+-- [SENSe:]VOLTage:AC:NULL:VALue {<value>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
@@ -3391,7 +3942,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         gErrorQueue.Add(-222)
     end
 end
---[SENSe:]VOLTage:AC:NULL:VALue? [{MIN|MAX|DEF}]
+-- [SENSe:]VOLTage:AC:NULL:VALue? [{MIN|MAX|DEF}]
 gCurrentRoot.mQuery.mParameters = {gParserTable.mParseACVNullValueKeywords}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     local lPrintNullValue = lParameters[1]
@@ -3463,7 +4014,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
         )
     )
 end
---[SENSe:]VOLTage:AC:RANGe:AUTO {OFF|ON|ONCE}
+-- [SENSe:]VOLTage:AC:RANGe:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
@@ -3493,7 +4044,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
     end
 end
---[SENSe:]VOLTage:AC:RANGe:AUTO?
+-- [SENSe:]VOLTage:AC:RANGe:AUTO?
 gCurrentRoot.mQuery.mExecute = function()
     print(
         string.format(
@@ -3501,6 +4052,151 @@ gCurrentRoot.mQuery.mExecute = function()
             gInstrumentState.AC_Voltage.Range_Auto.value.shorthand
         )
     )
+end
+
+------------------------------------------------------------------------------
+--
+-- TRIGger subsystem
+--
+-----------------------------------------------------------------------------
+
+-- TRIGger:COUNt {<count>|MIN|MAX|DEF|INFinity}
+gCurrentRoot = gCommandTree["TRIGGER"]["COUNT"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTriggerCount}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lTriggerCount = lParameters[1]
+    if lTriggerCount <= gOperatingBoundaries.General.Trigger_Count.max
+    and lTriggerCount >= gOperatingBoundaries.General.Trigger_Count.min then
+        gInstrumentState.General.Trigger_Count.value = lTriggerCount
+        gTriggerModel.tmInitialized = false
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- TRIGger:COUNt? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = 
+{
+    {
+        mParse = gParserTable.ParseParameterName,
+        mOptional = true,
+        mNames =
+        {
+            ["MIN"]         = gOperatingBoundaries.General.Trigger_Count.min,
+            ["MINIMUM"]     = gOperatingBoundaries.General.Trigger_Count.min,
+            ["MAX"]         = gOperatingBoundaries.General.Trigger_Count.max,
+            ["MAXIMUM"]     = gOperatingBoundaries.General.Trigger_Count.max,
+            ["DEF"]         = gOperatingBoundaries.General.Trigger_Count.def,
+            ["DEFAULT"]     = gOperatingBoundaries.General.Trigger_Count.def,
+        }
+    }
+}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lDelay = lParameters[1]
+    if lDelay == nil then
+        lDelay = gInstrumentState.General.Trigger_Count.value
+    end
+    print(FormatNumber(lDelay, true))
+end
+-- TRIGger:DELay {<seconds>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["TRIGGER"]["DELAY"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTriggerDelay}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lDelay = lParameters[1]
+    if lDelay <= gOperatingBoundaries.General.Trigger_Delay.max
+    and lDelay >= gOperatingBoundaries.General.Trigger_Delay.min then
+        gInstrumentState.General.Trigger_Delay_Auto.value = gInstrumentAttributes.Auto_Delay.OFF
+        gInstrumentState.General.Trigger_Delay_Auto.setter(gInstrumentState.General.Trigger_Delay_Auto.value.DMM_Enum)
+        gInstrumentState.General.Trigger_Delay.value = lDelay
+        gTriggerModel.tmInitialized = false
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- TRIGger:DELay? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseTriggerDelayKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lDelay = lParameters[1]
+    if lDelay == nil then
+        lDelay = gInstrumentState.General.Trigger_Delay.value
+    end
+    print(FormatNumber(lDelay, true))
+end
+-- TRIGger:DELay:AUTO {OFF|ON}
+gCurrentRoot = gCommandTree["TRIGGER"]["DELAY"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lDelayAuto = lParameters[1]
+    if lDelayAuto == true then
+        gInstrumentState.General.Trigger_Delay_Auto.value = gInstrumentAttributes.Auto_Delay.ON
+    else
+        gInstrumentState.General.Trigger_Delay_Auto.value = gInstrumentAttributes.Auto_Delay.OFF
+    end
+    gInstrumentState.General.Trigger_Delay_Auto.setter(gInstrumentState.General.Trigger_Delay_Auto.value.DMM_Enum)
+    gTriggerModel.tmInitialized = false
+end
+-- TRIGger:DELay:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.General.Trigger_Delay_Auto.value.shorthand
+        )
+    )
+end
+--TRIGger:SLOPe {POSitive|NEGative}
+gCurrentRoot = gCommandTree["TRIGGER"]["SLOPE"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    {
+        mParse = gParserTable.ParseParameterName,
+        mNames =
+        {
+            ["POS"]         = "POS",
+            ["POSITIVE"]    = "POS",
+            ["NEG"]         = "NEG",
+            ["NEGATIVE"]    = "NEG",
+        }
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lSlope = lParameters[1]
+    if lSlope == "POS" then
+        gInstrumentState.General.Trigger_Slope.value = gInstrumentAttributes.Trigger_Slope.Positive
+    else
+        gInstrumentState.General.Trigger_Slope.value = gInstrumentAttributes.Trigger_Slope.Negative
+    end
+    gInstrumentState.General.Trigger_Slope.setter(gInstrumentState.General.Trigger_Slope.value.DMM_Enum)
+end
+--TRIGger:SLOPe?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Trigger_Slope.value.shorthand)
+end
+--TRIGger:SOURce {IMMediate|EXTernal|BUS|INTernal}
+gCurrentRoot = gCommandTree["TRIGGER"]["SOURCE"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    {
+        mParse = gParserTable.ParseParameterName,
+        mNames =
+        {
+            ["IMM"]         = "IMM",
+            ["IMMEDIATE"]   = "IMM",
+            ["EXT"]         = "EXT",
+            ["EXTERNAL"]    = "EXT",
+            ["BUS"]         = "BUS",
+            ["INTERNAL"]    = "INT",
+            ["INT"]         = "INT",
+        }
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lSource = lParameters[1]
+    gInstrumentState.General.Trigger_Source.value = lSource
+    gTriggerModel.tmInitialized = false
+end
+--TRIGger:SOURce?
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    print(gInstrumentState.General.Trigger_Source.value)
 end
 
 -- INITIALIZE HERE
