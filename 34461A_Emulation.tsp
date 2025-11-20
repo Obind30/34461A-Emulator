@@ -224,7 +224,7 @@ local gRangeTable =
     DC_Current      = {10e-6, 100e-6, 1e-3, 10e-3, 100e-3, 1, 3, 10},
     AC_Current      = {1e-3, 10e-3, 100e-3, 1, 3, 10},
     Resistance      = {10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
-    FW_Resistance   = {1, 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
+    FResistance     = {1, 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
     Continuity      = {1e3},
     Diode           = {10},
     Capacitance     = {1e-9, 10e-9, 100e-9, 1e-6, 10e-6, 100e-6, 1e-3},
@@ -271,6 +271,38 @@ local gOperatingBoundaries =
             max = 300,
             def = 30,
             min = 3
+        },
+    },
+    Resistance = {
+        Range =
+        {
+            -- Values fully compatible, default same as 34461
+            max = 100e6,
+            def = 1000,
+            min = 10
+        },
+        Null =
+        {
+            -- Max/min better than 34461
+            max = 1e8,
+            def = 0,
+            min = -1e8
+        },
+    },
+    FResistance = {
+        Range =
+        {
+            -- Values fully compatible, default same as 34461
+            max = 100e6,
+            def = 1000,
+            min = 1
+        },
+        Null =
+        {
+            -- Max/min better than 34461
+            max = 1e8,
+            def = 0,
+            min = -1e8
         },
     },
     General =
@@ -379,8 +411,8 @@ local gInstrumentState =
     -- Trigger Delay            Automatic
     -- Trigger Source           Immediate
     -- Trigger Slope            NEGative
-    -- Math Functions           Disabled, Other parameters unchanged
-    -- Per-function Null State  Disabled
+    -- * Math Functions           Disabled, Other parameters unchanged
+    -- * Per-function Null State  Disabled
 
     -- DC VOLTAGE/RATIO VARIABLES
     DC_Voltage = 
@@ -480,7 +512,111 @@ local gInstrumentState =
             setter = gAccessors.mSetMeasureAutorange,
         },
     },
+    Resistance =
+    {
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Range =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureRange,
+            setter = gAccessors.mSetMeasureRange,
+        },
+        Range_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureAutorange,
+            setter = gAccessors.mSetMeasureAutorange,
+        },
+        NPLC =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureNPLC,
+            setter = gAccessors.mSetMeasureNPLC,
+        },
+        Zero_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetAutozeroEnable,
+            setter = gAccessors.mSetAutozeroEnable,
+        },
+    },
+    FResistance =
+    {
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Range =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureRange,
+            setter = gAccessors.mSetMeasureRange,
+        },
+        Range_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureAutorange,
+            setter = gAccessors.mSetMeasureAutorange,
+        },
+        NPLC =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureNPLC,
+            setter = gAccessors.mSetMeasureNPLC,
+        },
+    },
 }
+gInstrumentState.FResistance.Null_State         = gInstrumentState.Resistance.Null_State
+gInstrumentState.FResistance.Null_Value         = gInstrumentState.Resistance.Null_Value
+gInstrumentState.FResistance.Null_Value_Auto    = gInstrumentState.Resistance.Null_Value_Auto
+-- I'll leave measure range separate for now
+-- gInstrumentState.FResistance.Range              = gInstrumentState.Resistance.Range
+gInstrumentState.FResistance.Range_Auto         = gInstrumentState.Resistance.Range_Auto
+gInstrumentState.FResistance.NPLC               = gInstrumentState.Resistance.NPLC
 
 local gInstrumentAttributes =
 {
@@ -504,61 +640,63 @@ local gInstrumentAttributes =
         {
             shorthand = "CURR",
             DMM_Enum = dmm.FUNC_DC_CURRENT,
-            stateVariables = null,
+            stateVariables = nil,
         },
         AC_Current = 
         {
             shorthand = "CURR:AC",
             DMM_Enum = dmm.FUNC_AC_CURRENT,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Temperature = 
         {
             shorthand = "TEMP",
             DMM_Enum = dmm.FUNC_TEMPERATURE,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Resistance = 
         {
             shorthand = "RES",
             DMM_Enum = dmm.FUNC_RESISTANCE,
-            stateVariables = null,
+            stateVariables = gInstrumentState.Resistance,
+            units = "OHM",
         },
-        FW_Resistance = 
+        FResistance = 
         {
             shorthand = "FRES",
             DMM_Enum = dmm.FUNC_4W_RESISTANCE,
-            stateVariables = null,
+            stateVariables = gInstrumentState.FResistance,
+            units = "OHM",
         },
         Diode = 
         {
             shorthand = "DIOD",
             DMM_Enum = dmm.FUNC_DIODE,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Capacitance = 
         {
             shorthand = "CAP",
             DMM_Enum = dmm.FUNC_CAPACITANCE,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Continuity = 
         {
             shorthand = "CONT",
             DMM_Enum = dmm.FUNC_CONTINUITY,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Frequency = 
         {
             shorthand = "FREQ",
             DMM_Enum = dmm.FUNC_ACV_FREQUENCY,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Period = 
         {
             shorthand = "PER",
             DMM_Enum = dmm.FUNC_ACV_PERIOD,
-            stateVariables = null,
+            stateVariables = nil,
         },
         Ratio = 
         {
@@ -641,6 +779,15 @@ gInstrumentState.AC_Voltage.Null_State.valueParent      = gInstrumentAttributes.
 gInstrumentState.AC_Voltage.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
 gInstrumentState.AC_Voltage.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
 
+gInstrumentState.Resistance.Null_State.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.Resistance.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+gInstrumentState.Resistance.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.Resistance.Zero_Auto.valueParent       = gInstrumentAttributes.OnOff
+
+--gInstrumentState.FResistance.Null_State.valueParent      = gInstrumentAttributes.OnOff
+--gInstrumentState.FResistance.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+--gInstrumentState.FResistance.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
+
 --============================================================================
 --
 -- Reset Functions
@@ -676,6 +823,25 @@ local gResetFunctionVariables = {
         gInstrumentState.AC_Voltage.Range.value             = 10
         gInstrumentState.AC_Voltage.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
     end,
+    ResetResistance = function()
+        -- RESISTANCE VARIABLES
+        gInstrumentState.Resistance.Null_State.value        = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Resistance.Null_Value.value        = 0
+        gInstrumentState.Resistance.Null_Value_Auto.value   = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Resistance.Range.value             = 1000
+        gInstrumentState.Resistance.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.Resistance.NPLC.value              = 10
+        gInstrumentState.Resistance.Zero_Auto.value         = gInstrumentAttributes.OnOff.ON
+    end,
+    ResetFResistance = function()
+        -- FRESISTANCE VARIABLES
+        gInstrumentState.FResistance.Null_State.value        = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.FResistance.Null_Value.value        = 0
+        gInstrumentState.FResistance.Null_Value_Auto.value   = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.FResistance.Range.value             = 1000
+        gInstrumentState.FResistance.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.FResistance.NPLC.value              = 10
+    end,
 }
 
 local ResetScriptVariables = function()
@@ -683,6 +849,8 @@ local ResetScriptVariables = function()
         gResetFunctionVariables.ResetGeneral()
         gResetFunctionVariables.ResetDCVoltage()
         gResetFunctionVariables.ResetACVoltage()
+        gResetFunctionVariables.ResetResistance()
+        gResetFunctionVariables.ResetFResistance()
 end
 
 local gSetFunctionAttributes = 
@@ -706,6 +874,21 @@ local gSetFunctionAttributes =
         gAccessors.mSetMeasureRange(gInstrumentState.AC_Voltage.Range.value)
         gAccessors.mSetMeasureAutorange(gInstrumentState.AC_Voltage.Range_Auto.value.DMM_Enum)
     end,
+    SetResistance = function()
+        gAccessors.mSetRelEnable(gInstrumentState.Resistance.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.Resistance.Null_Value.value)
+        gAccessors.mSetMeasureRange(gInstrumentState.Resistance.Range.value)
+        gAccessors.mSetMeasureAutorange(gInstrumentState.Resistance.Range_Auto.value.DMM_Enum)
+        gAccessors.mSetMeasureNPLC(gInstrumentState.Resistance.NPLC.value)
+        gAccessors.mSetAutozeroEnable(gInstrumentState.Resistance.Zero_Auto.value.DMM_Enum)
+    end,
+    SetFResistance = function()
+        gAccessors.mSetRelEnable(gInstrumentState.FResistance.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.FResistance.Null_Value.value)
+        gAccessors.mSetMeasureRange(gInstrumentState.FResistance.Range.value)
+        gAccessors.mSetMeasureAutorange(gInstrumentState.FResistance.Range_Auto.value.DMM_Enum)
+        gAccessors.mSetMeasureNPLC(gInstrumentState.FResistance.NPLC.value)
+    end,
 }
 
 local ResetDMMSettings = function()
@@ -717,7 +900,7 @@ end
 
 gReadingMemory.reset = function()
     gReadingMemory.readingBuffer.clear()
-    gReadingMemory.lastRemoved = -1,
+    gReadingMemory.lastRemoved = -1
     gReadingMemory.units = gInstrumentState.Measure_Function.value.units
 end
 
@@ -1407,16 +1590,17 @@ gParserTable.mParseDCVoltageRange =
         gParserTable.mParseDCVoltageRangeKeywords,
     }
 }
-gParserTable.mParseVoltageAutoOnceKeywords = 
+gParserTable.mParseAutoOnceKeywords = 
 {
     mParse = gParserTable.ParseParameterChoice,
     mData =
     {
-        gParserTable.mParseBooleanKeywords,
         {
             mParse = gParserTable.ParseParameterName,
+            mOptional = true,
             mNames = {["ONCE"] = "ONCE"}
-        }
+        },
+        gParserTable.mParseBooleanKeywords,
     }
 }
 gParserTable.mParseACVoltageRangeKeywords =
@@ -1605,7 +1789,75 @@ gParserTable.mParseTriggerCount =
         gParserTable.mParseTriggerCountKeywords
     }
 }
-
+gParserTable.mParseResNullValueKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Resistance.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Resistance.Null.min,
+        ["MAX"]         = gOperatingBoundaries.Resistance.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Resistance.Null.max,
+        ["DEF"]         = gOperatingBoundaries.Resistance.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Resistance.Null.def,
+    }
+}
+gParserTable.mParseResNullValue =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseResNullValueKeywords,
+    }
+}
+gParserTable.mParseResRangeKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Resistance.Range.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Resistance.Range.min,
+        ["MAX"]         = gOperatingBoundaries.Resistance.Range.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Resistance.Range.max,
+        ["DEF"]         = gOperatingBoundaries.Resistance.Range.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Resistance.Range.def,
+    }
+}
+gParserTable.mParseResRange =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseResRangeKeywords,
+    }
+}
+gParserTable.mParseFResRangeKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.FResistance.Range.min,
+        ["MINIMUM"]     = gOperatingBoundaries.FResistance.Range.min,
+        ["MAX"]         = gOperatingBoundaries.FResistance.Range.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.FResistance.Range.max,
+        ["DEF"]         = gOperatingBoundaries.FResistance.Range.def,
+        ["DEFAULT"]     = gOperatingBoundaries.FResistance.Range.def,
+    }
+}
+gParserTable.mParseFResRange =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseFResRangeKeywords,
+    }
+}
 ------------------------------------------------------------------------------
 --
 --  Parse4882
@@ -2271,6 +2523,14 @@ gCommandTree =
                 mCommand = {},
             },
         },
+        ["RESISTANCE"] =
+        {
+            mCommand = {},
+        },
+        ["FRESISTANCE"] =
+        {
+            mCommand = {},
+        },
     },
     ["DATA"] = 
     {
@@ -2308,11 +2568,9 @@ gCommandTree =
     },
     ["INITIATE"] =
     {
-        mQuery = {},
         mCommand = {},
         ["IMMEDIATE"] =
         {
-            mQuery = {},
             mCommand = {},
         },
     },
@@ -2334,12 +2592,96 @@ gCommandTree =
     },
     ["SENSE"] =
     {
+        ["FRESISTANCE"] =
+        {
+            ["NPLC"] = 
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+            ["NULL"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["STATE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["VALUE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                    ["AUTO"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                    },
+                },
+            },
+            ["RANGE"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["AUTO"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+        },
         ["FUNCTION"] =
         {
             ["ON"] =
             {
                 mCommand = {},
                 mQuery = {},
+            },
+        },
+        ["RESISTANCE"] =
+        {
+            ["NPLC"] = 
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+            ["NULL"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["STATE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["VALUE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                    ["AUTO"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                    },
+                },
+            },
+            ["RANGE"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["AUTO"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+            ["ZERO"] =
+            {
+                ["AUTO"] =
+                {
+                    mQuery = {},
+                    mCommand = {}
+                }
             },
         },
         ["VOLTAGE"] =
@@ -2487,6 +2829,9 @@ gCommandTree["CONFIGURE"]["DC"]["RAT"]                  = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RATIO"]           = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RAT"]             = gCommandTree["CONFIGURE"]["RATIO"]
 
+gCommandTree["CONFIGURE"]["RES"]                        = gCommandTree["CONFIGURE"]["RESISTANCE"]
+gCommandTree["CONFIGURE"]["FRES"]                       = gCommandTree["CONFIGURE"]["FRESISTANCE"]
+
 gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
 gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
 
@@ -2498,6 +2843,30 @@ gCommandTree["FUNC"]                                    = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["FUNC"]                           = gCommandTree["SENSE"]["FUNCTION"]
 gCommandTree["SENSE"]["FUNCTION"].mCommand              = gCommandTree["SENSE"]["FUNCTION"]["ON"].mCommand
 gCommandTree["SENSE"]["FUNCTION"].mQuery                = gCommandTree["SENSE"]["FUNCTION"]["ON"].mQuery
+
+gCommandTree["RESISTANCE"]                              = gCommandTree["SENSE"]["RESISTANCE"]
+gCommandTree["RES"]                                     = gCommandTree["SENSE"]["RESISTANCE"]
+gCommandTree["SENSE"]["RES"]                            = gCommandTree["SENSE"]["RESISTANCE"]
+gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STAT"]     = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VAL"]      = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["RESISTANCE"]["NULL"].mCommand    = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["RESISTANCE"]["NULL"].mQuery      = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"].mQuery
+gCommandTree["SENSE"]["RESISTANCE"]["RANG"]             = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]
+
+gCommandTree["SENSE"]["FRESISTANCE"]["NPLC"]            = gCommandTree["SENSE"]["RESISTANCE"]["NPLC"] 
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]["AUTO"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]["AUTO"]
+gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]["AUTO"]   = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]["AUTO"]
+
+gCommandTree["FRESISTANCE"]                             = gCommandTree["SENSE"]["FRESISTANCE"]
+gCommandTree["FRES"]                                    = gCommandTree["SENSE"]["FRESISTANCE"]
+gCommandTree["SENSE"]["FRES"]                           = gCommandTree["SENSE"]["FRESISTANCE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STAT"]    = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VAL"]     = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mCommand   = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mQuery
+gCommandTree["SENSE"]["FRESISTANCE"]["RANG"]            = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
 
 gCommandTree["VOLTAGE"]                                 = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["VOLT"]                                    = gCommandTree["SENSE"]["VOLTAGE"]
@@ -2511,6 +2880,10 @@ gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VAL"]   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VAL"]   = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NPLC"]          = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["ZERO"]["AUTO"]  = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
+gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"].mCommand = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"].mQuery   = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["STATE"].mQuery
+gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"].mCommand = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"].mQuery   = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["STATE"].mQuery
 
 gCommandTree["DATA"]["POIN"]                            = gCommandTree["DATA"]["POINTS"]
 gCommandTree["DATA"]["POINTS"]["EVEN"]                  = gCommandTree["DATA"]["POINTS"]["EVENT"]
@@ -2547,8 +2920,10 @@ if gDEVMODE then
             end
         end
     end
+    --gPrintCMDTree("", gCommandTree)
+    --exit()
 end
---gPrintCMDTree("", gCommandTree)
+
 --============================================================================
 --
 -- Error Queue
@@ -3021,7 +3396,7 @@ local FormatBuffer = function (lStart, lCount, remove)
     local lBuffer = gReadingMemory.readingBuffer
 
     -- print(lStart)
-    local lFormatString = FormatNumber(lBuffer.readings[lStart])
+    local lFormatString = FormatNumber(lBuffer.readings[lStart], true)
     for i=1, lCount-1 do
         lFormatString = lFormatString .. "," .. FormatNumber(lBuffer.readings[math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1], true)
         --Printing timestamps to ensure continuity
@@ -3034,6 +3409,12 @@ local FormatBuffer = function (lStart, lCount, remove)
         --print(gReadingMemory.lastRemoved)
     end
     return lFormatString
+end
+
+local FormatBlockLength = function(lString)
+    local lBlockLength = string.format("%d", string.len(lString))
+    local lNumLength = string.format("%d", string.len(lBlockLength))
+    return string.format("#%s%s%s", lNumLength, lBlockLength, lString)
 end
 
 local ChangeMeasFunction = function(measFunction)
@@ -3181,7 +3562,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
             lDataAvailable = gReadingMemory.bufferSize
         end
 
-        print(FormatBuffer(lStart, math.min(lMaxReadings,lDataAvailable), true))
+        print(FormatBlockLength(FormatBuffer(lStart, math.min(lMaxReadings,lDataAvailable), true)))
     else
         gErrorQueue.Add(-222)
     end
@@ -3236,6 +3617,108 @@ gCurrentRoot.mQuery.mExecute = function()
             "nil"
         )
     )
+end
+-- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["FRESISTANCE"]
+gCurrentRoot.mCommand.mParameters =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.FResistance.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.FResistance.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.FResistance.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.FResistance.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.FResistance.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.FResistance.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.FResistance
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to Resistance defaults
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gResetFunctionVariables.ResetFResistance()
+    gSetFunctionAttributes.SetFResistance()
+    gReadingMemory.reset()
+    -- Set the measure range
+    local lMeasureRange = lParameters[1]
+    if lMeasureRange then
+        if lMeasureRange == "AUTO" then
+            gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]["AUTO"].mCommand.mExecute({"ON"})
+        elseif lMeasureRange <= gOperatingBoundaries.FResistance.Range.max
+        and    lMeasureRange >= gOperatingBoundaries.FResistance.Range.min then
+            gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"].mCommand.mExecute({lMeasureRange})
+        else
+            gErrorQueue.Add(-222)
+        end
+    end
+end
+-- CONFigure:RESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["RESISTANCE"]
+gCurrentRoot.mCommand.mParameters =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.Resistance.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.Resistance.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.Resistance.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.Resistance.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.Resistance.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.Resistance.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Resistance
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to Resistance defaults
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gResetFunctionVariables.ResetResistance()
+    gSetFunctionAttributes.SetResistance()
+    gReadingMemory.reset()
+    -- Set the measure range
+    local lMeasureRange = lParameters[1]
+    if lMeasureRange then
+        if lMeasureRange == "AUTO" then
+            gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]["AUTO"].mCommand.mExecute({"ON"})
+        elseif lMeasureRange <= gOperatingBoundaries.Resistance.Range.max
+        and    lMeasureRange >= gOperatingBoundaries.Resistance.Range.min then
+            gCommandTree["SENSE"]["RESISTANCE"]["RANGE"].mCommand.mExecute({lMeasureRange})
+        else
+            gErrorQueue.Add(-222)
+        end
+    end
 end
 -- CONFigure[:VOLTage]:AC [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["AC"]
@@ -3541,6 +4024,53 @@ end
 
 ------------------------------------------------------------------------------
 --
+-- [SENSe:]FRESistance subsystem
+--
+-----------------------------------------------------------------------------
+
+-- [SENSe:]FRESistance:RANGe {<range>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFResRange}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lMeasureRange = lParameters[1]
+    local lInstAutorange = gInstrumentState.FResistance.Range_Auto
+    local lInstRange = gInstrumentState.FResistance.Range
+    if gMathAbs(lMeasureRange) <= 1.10 * lMeasureRange then
+        -- Turn autorange off
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+        -- Find the appropriate range and set there
+        for _, lRange in ipairs(gRangeTable.FResistance) do
+            if gMathAbs(lMeasureRange) <= 1.10 * lRange then
+                lInstRange.value = lRange
+                break
+            end
+        end
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.FResistance then
+            lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+            gAccessors.mSetMeasureRange(lInstRange.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]FRESistance:RANGe? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseFResRangeKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintRange = lParameters[1]
+    if lPrintRange == nil then
+        lPrintRange = gInstrumentState.FResistance.Range.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintRange, true)
+        )
+    )
+end
+
+------------------------------------------------------------------------------
+--
 -- [SENSe:]FUNCtion subsystem
 --
 -----------------------------------------------------------------------------
@@ -3573,8 +4103,8 @@ gCurrentRoot.mCommand.mParameters =
             ["FREQUENCY"]       = gInstrumentAttributes.Meas_Functions.Frequency,
             ["FREQ"]            = gInstrumentAttributes.Meas_Functions.Frequency,
 
-            ["FRESISTANCE"]     = gInstrumentAttributes.Meas_Functions.FW_Resistance,
-            ["FRES"]            = gInstrumentAttributes.Meas_Functions.FW_Resistance,
+            ["FRESISTANCE"]     = gInstrumentAttributes.Meas_Functions.FResistance,
+            ["FRES"]            = gInstrumentAttributes.Meas_Functions.FResistance,
 
             ["PERIOD"]          = gInstrumentAttributes.Meas_Functions.Period,
             ["PER"]             = gInstrumentAttributes.Meas_Functions.Period,
@@ -3619,6 +4149,240 @@ end
 
 ------------------------------------------------------------------------------
 --
+-- [SENSe:]RESistance subsystem
+--
+-----------------------------------------------------------------------------
+
+-- [SENSe:]:RESistance:NPLC {<PLCs>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NPLC"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lNPLC = lParameters[1]
+    if lNPLC <= gOperatingBoundaries.General.Nplc.max 
+    and lNPLC >= gOperatingBoundaries.General.Nplc.min then
+        gInstrumentState.Resistance.NPLC.value = lNPLC
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Resistance or
+        gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.FResistancethen then
+            gInstrumentState.Resistance.NPLC.setter(lNPLC)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]RESistance:NPLC? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNPLCKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lNPLC = lParameters[1]
+    if lParameters[1] == nil then
+        lNPLC = gInstrumentState.Resistance.NPLC.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lNPLC, true)
+        )
+    )
+end
+-- [SENSe:]RESistance:NULL[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lNullState = lParameters[1]
+    -- Update null state variable
+    if lNullState == true then
+        gInstrumentState.Resistance.Null_State.value = gInstrumentAttributes.OnOff.ON
+    elseif lNullState == false then
+        gInstrumentState.Resistance.Null_State.value = gInstrumentAttributes.OnOff.OFF
+    end
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Resistance or
+    gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.FResistance then
+        gInstrumentState.Resistance.Null_State.setter(gInstrumentState.Resistance.Null_State.value.shorthand)
+    end
+end
+-- [SENSe:]RESistance:NULL[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Resistance.Null_State.value.shorthand
+        )
+    )
+end
+-- [SENSe:]RESistance:NULL:VALue {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseResNullValue}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local relLevel = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.Resistance.Null_Value
+    if relLevel <= gOperatingBoundaries.Resistance.Null.max and
+       relLevel >= gOperatingBoundaries.Resistance.Null.min then
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.Resistance or
+        lMeasFunc.value == gInstrumentAttributes.Meas_Functions.FResistance then
+            lNullVal.setter(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]RESistance:NULL:VALue? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseResNullValueKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintNullValue = lParameters[1]
+    if lPrintNullValue == nil then
+        lPrintNullValue = gInstrumentState.Resistance.Null_Value.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintNullValue, true)
+        )
+    )
+end
+-- [SENSe:]RESistance:NULL:VALue:AUTO {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    if lParameters[1] == true then
+        gInstrumentState.Resistance.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
+    elseif lParameters[1] == false then
+        gInstrumentState.Resistance.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
+    end
+end
+-- [SENSe:]RESistance:NULL:VALue:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Resistance.Null_Value_Auto.value.shorthand
+        )
+    )
+end
+-- This is unique to 2W
+-- [SENSe:]RESistance:RANGe {<range>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseResRange}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lMeasureRange = lParameters[1]
+    local lInstAutorange = gInstrumentState.Resistance.Range_Auto
+    local lInstRange = gInstrumentState.Resistance.Range
+    if gMathAbs(lMeasureRange) <= 1.10 * lMeasureRange then
+        -- Turn autorange off
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+        -- Find the appropriate range and set there
+        for _, lRange in ipairs(gRangeTable.Resistance) do
+            if gMathAbs(lMeasureRange) <= 1.10 * lRange then
+                lInstRange.value = lRange
+                break
+            end
+        end
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Resistance then
+            lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+            gAccessors.mSetMeasureRange(lInstRange.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]RESistance:RANGe? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseResRangeKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintRange = lParameters[1]
+    if lPrintRange == nil then
+        lPrintRange = gInstrumentState.Resistance.Range.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintRange, true)
+        )
+    )
+end
+-- [SENSe:]RESistance:RANGe:AUTO {OFF|ON|ONCE}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lAutorange = lParameters[1]
+    local lInstAutorange = gInstrumentState.Resistance.Range_Auto
+    if lAutorange == "ONCE" then
+        -- Turn autorange on
+        lInstAutorange.setter(gInstrumentAttributes.OnOff.ON.shorthand)
+        -- Store some measurement parameters to reset
+        local lMeasCount = gAccessors.mGetMeasureCount()
+        local lMeasFunc = gAccessors.mGetMeasureFunction()
+        -- Take a single measurement to set
+        gAccessors.mSetMeasureCount(1)
+        gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.Resistance.DMM_Enum)
+        gMeasure.read()
+        gInstrumentState.Resistance.Range.value = gAccessors.mGetMeasureRange()
+        gAccessors.mSetMeasureCount(lMeasCount)
+        gAccessors.mSetMeasureFunction(lMeasFunc)
+        lAutorange = false
+    end
+    if lAutorange == true then
+        lInstAutorange.value = gInstrumentAttributes.OnOff.ON
+    elseif lAutorange == false then
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+    end
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Resistance or
+    gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.FResistance then
+        lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+    end
+end
+-- [SENSe:]RESistance:RANGe:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Resistance.Range_Auto.value.shorthand
+        )
+    )
+end
+-- This is unique to 2W
+-- [SENSe:]RESistance:ZERO:AUTO {OFF|ON|ONCE}
+gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["ZERO"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lAutoZero = lParameters[1]
+    local lInstZeroAuto = gInstrumentState.Resistance.Zero_Auto
+    local lInstFunction = gInstrumentState.Measure_Function
+    if lAutoZero == true then
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.ON
+    elseif lAutoZero == false then
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.OFF
+    elseif lAutoZero == "ONCE" then
+        if lInstFunction.value == gInstrumentAttributes.Meas_Functions.Resistance then
+            gMeasure.autozero.once()
+        end
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.OFF
+    end
+    if lInstFunction.value == gInstrumentAttributes.Meas_Functions.Resistance then
+        lInstZeroAuto.setter(lInstZeroAuto.value.DMM_Enum)
+    end
+end
+-- [SENSe:]RESistance:ZERO:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.DC_Voltage.Zero_Auto.value.shorthand
+        )
+    )
+end
+
+
+
+------------------------------------------------------------------------------
+--
 -- [SENSe:]VOLTage:AC subsystem
 --
 -----------------------------------------------------------------------------
@@ -3660,7 +4424,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
     )
 end
 -- [SENSe:]VOLTage:AC:NULL[:STATe] {ON|1|OFF|0}
-gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]
+gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     gReadingMemory.reset()
@@ -3685,8 +4449,6 @@ gCurrentRoot.mQuery.mExecute = function()
         )
     )
 end
-gCurrentRoot["STATE"].mCommand = gCurrentRoot.mCommand
-gCurrentRoot["STATE"].mQuery = gCurrentRoot.mQuery
 -- [SENSe:]VOLTage:AC:NULL:VALue {<value>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVNullValue}
@@ -3781,7 +4543,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
 end
 -- [SENSe:]VOLTage:AC:RANGe:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]["AUTO"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     gReadingMemory.reset()
     local lAutorange = lParameters[1]
@@ -3827,7 +4589,7 @@ end
 -----------------------------------------------------------------------------
 
 -- [SENSe:]VOLTage:DC:NULL[:STATe] {ON|1|OFF|0}
-gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]
+gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     gReadingMemory.reset()
@@ -3853,8 +4615,6 @@ gCurrentRoot.mQuery.mExecute = function()
         )
     )
 end
-gCurrentRoot["STATE"].mCommand = gCurrentRoot.mCommand
-gCurrentRoot["STATE"].mQuery = gCurrentRoot.mQuery
 --[SENSe:]VOLTage:DC:NULL:VALue {<value>|MIN|MAX|DEF}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVNullValue}
@@ -3951,7 +4711,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
 end
 -- [SENSe:]VOLTage:DC:RANGe:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     gReadingMemory.reset()
     local lAutorange = lParameters[1]
@@ -4023,7 +4783,7 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
 end
 -- [SENSe:]VOLTage[:DC]:ZERO:AUTO {OFF|ON|ONCE}
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseVoltageAutoOnceKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     gReadingMemory.reset()
     local lAutoZero = lParameters[1]
@@ -4042,7 +4802,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     end
     if lInstFunction.value == gInstrumentAttributes.Meas_Functions.DC_Voltage 
     or lInstFunction.value == gInstrumentAttributes.Meas_Functions.Ratio then
-        lInstZeroAuto.setter(lInstZeroAuto.DMM_Enum)
+        lInstZeroAuto.setter(lInstZeroAuto.value.DMM_Enum)
     end
 end
 -- [SENSe:]VOLTage[:DC]:ZERO:AUTO?
