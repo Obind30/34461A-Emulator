@@ -72,13 +72,13 @@ local gAccessors = {}               -- Setter and getter functions
 local gRemoteComm = ki.remotecomm   -- Internal command that recieves instrument communication
 
 --[[BUFFER VARIABLES FOR MEASUREMENTS]]
+-- Initialize the reading buffer as described in 34461A manual
 local gReadingMemory =
 {
-    --bufferSize = 10000,
-    bufferSize = 40,
+    bufferSize = 10000,
     readingBuffer = nil,
-    lastRemoved = -1,
-    units = "VDC"
+    lastRemoved = -1,       -- Timestamp of the last buffer reading to be removed
+    units = "VDC"           -- Buffer reading units
 }
 gReadingMemory.readingBuffer = buffer.make(gReadingMemory.bufferSize, buffer.STYLE_STANDARD)
 gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
@@ -939,6 +939,15 @@ gInstrumentState.Resistance.Zero_Auto.valueParent       = gInstrumentAttributes.
 --
 --============================================================================
 
+------------------------------------------------------------------------------
+--
+--  CheckTerminals
+--
+--  Check if front or rear terminals are being used and adjust instrument
+--  attributes accordingly.
+--
+------------------------------------------------------------------------------
+
 local CheckTerminals = function()
     local lActiveTerminals = gAccessors.mGetTerminals()
     if lActiveTerminals == dmm.TERMINALS_FRONT then
@@ -994,6 +1003,14 @@ local CheckTerminals = function()
         return 10
     end
 end
+
+------------------------------------------------------------------------------
+--
+--  gResetFunctionVariables
+--
+--  An array containing variable reset functions for each mesurement function
+--
+------------------------------------------------------------------------------
 
 local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
@@ -1066,6 +1083,14 @@ local gResetFunctionVariables = {
     end,
 }
 
+------------------------------------------------------------------------------
+--
+--  ResetScriptVariables
+--
+--  Reset all script variables to 34461A defaults
+--
+------------------------------------------------------------------------------
+
 local ResetScriptVariables = function()
         gInstrumentState.Measure_Function.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
         gResetFunctionVariables.ResetGeneral()
@@ -1076,6 +1101,15 @@ local ResetScriptVariables = function()
         gResetFunctionVariables.ResetResistance()
         gResetFunctionVariables.ResetFResistance()
 end
+
+------------------------------------------------------------------------------
+--
+--  gSetFunctionAttributes
+--
+--  An array containing functions to set the actual DMM 6500 state to 
+--  34461A defaults for each function
+--
+------------------------------------------------------------------------------
 
 local gSetFunctionAttributes = 
 {
@@ -1130,6 +1164,14 @@ local gSetFunctionAttributes =
     end,
 }
 
+------------------------------------------------------------------------------
+--
+--  ResetDMMSettings
+--
+--  Reset the DMM 6500 state to 34461A defaults
+--
+------------------------------------------------------------------------------
+
 local ResetDMMSettings = function()
     reset()
     gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.DC_Voltage.DMM_Enum)
@@ -1137,11 +1179,27 @@ local ResetDMMSettings = function()
     gSetFunctionAttributes.SetDCVoltage()
 end
 
+------------------------------------------------------------------------------
+--
+--  gReadingMemory.reset
+--
+--  Reset the reading buffer to default settings
+--
+------------------------------------------------------------------------------
+
 gReadingMemory.reset = function()
     gReadingMemory.readingBuffer.clear()
     gReadingMemory.lastRemoved = -1
     gReadingMemory.units = gInstrumentState.Measure_Function.value.units
 end
+
+------------------------------------------------------------------------------
+--
+--  ResetDefaults
+--
+--  Reset the DMM 6500 and script variables to 34461A defaults
+--
+------------------------------------------------------------------------------
 
 ResetDefaults = function ()
     ResetScriptVariables()
@@ -1150,6 +1208,103 @@ ResetDefaults = function ()
 end
 
 ResetScriptVariables()
+
+--============================================================================
+--
+-- Measurement Trigger Model
+--
+--============================================================================
+
+local gTriggerModel = {
+    tmInitialized = false
+}
+
+------------------------------------------------------------------------------
+--
+--  InitializeTM
+--
+--  Load the measurement trigger model with user specified settings
+--
+------------------------------------------------------------------------------
+
+gTriggerModel.InitializeTM = function()
+    -- Trigger Delay Timer
+    trigger.timer[1].clear()
+    trigger.timer[1].count = 1
+    -- Stimulus is the trigger model event
+    trigger.timer[1].start.stimulus = trigger.EVENT_NOTIFY1
+    -- 0 if autodelay
+    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
+        trigger.timer[1].delay = gInstrumentState.General.Trigger_Delay.value
+    end
+    trigger.timer[1].enable = trigger.ON
+
+    local tm = trigger.model
+    tm.load("Empty")
+    if gInstrumentState.General.Trigger_Source.value == "EXT" then
+        tm.setblock(1, trigger.BLOCK_WAIT, trigger.EVENT_EXTERNAL, trigger.CLEAR_ENTER)
+    elseif gInstrumentState.General.Trigger_Source.value == "IMM" then
+        tm.setblock(1, trigger.BLOCK_NOP)
+    end
+    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
+        -- Notify trigger delay timer to start
+        tm.setblock(2, trigger.BLOCK_NOTIFY, trigger.EVENT_NOTIFY1)
+        -- Wait for trigger delay timer
+        tm.setblock(3, trigger.BLOCK_WAIT, trigger.EVENT_TIMER1)
+    else
+        tm.setblock(2, trigger.BLOCK_NOP)
+        tm.setblock(3, trigger.BLOCK_NOP)
+    end
+
+    -- Take measurement
+    tm.setblock(4, trigger.BLOCK_MEASURE_DIGITIZE, gReadingMemory.readingBuffer, 1)
+    
+    -- Loop back to notify
+    tm.setblock(5, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Sample_Count.value, 2)
+    -- Loop back to wait
+    tm.setblock(6, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Trigger_Count.value, 1)
+
+    gTriggerModel.tmInitialized = true
+end
+
+------------------------------------------------------------------------------
+--
+--  InitiateMeasurements
+--
+--  Initiate a new set of measurements
+--
+------------------------------------------------------------------------------
+
+gTriggerModel.InitiateMeasurements = function()
+    if not gTriggerModel.tmInitialized then
+        gTriggerModel.InitializeTM()
+    end
+    gLastMeasurement.index = 1
+    gLastMeasurement.value = gNan
+    gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
+    local lCurrentStateVars = gInstrumentState.Measure_Function.value.stateVariables
+    if lCurrentStateVars and lCurrentStateVars.Null_Value_Auto.value then
+        lCurrentStateVars.Null_State.value = gInstrumentAttributes.OnOff.ON
+        gRel.acquire()
+    end
+    trigger.model.initiate()
+end
+
+------------------------------------------------------------------------------
+--
+--  EndTriggerModel
+--
+--  When the trigger model is completed
+--
+------------------------------------------------------------------------------
+
+gTriggerModel.EndTriggerModel = function()
+    print("HEY")
+    -- Store the last measurement for DATA:LAST?
+    gLastMeasurement.index = gReadingMemory.readingBuffer.endindex
+    if gLastMeasurement.index == 0 then gLastMeasurement.value = gNan
+    else gLastMeasurement.value = gReadingMemory.readingBuffer[gLastMeasurement.index] end
+end
 
 --============================================================================
 --
@@ -2647,6 +2802,8 @@ Initialize34461A = function ()
     --reset()
     ResetDefaults()
     format.byteorder = format.NORMAL
+    localnode.prompts = localnode.DISABLE
+    localnode.prompts4882 = localnode.DISABLE
 end
 
 ------------------------------------------------------------------------------
@@ -2810,22 +2967,31 @@ Engine34461A = function ()
     -- override status register
     --RemoteCommStatus.override = 175
     gEngineMode = true
-    --display.screen = display.SMUA
     gRemoteComm.intercept = gRemoteComm.ALL
     gOrigin = nil
+
+    local lLastTMState = trigger.model.state()
+    local lTMState = lLastTMState
+
     GetNewMessage = GetFirstCommandMessage
     while true do
         GetNewMessage()
         if gParserState.mNextMessage then
             GetNextCommand()
             ExecuteMessage()
-            if gDEVMODE and eventlog.getcount() > 0 then
-                print(eventlog.next())
-            end
         else
             -- Update status model here.
             --UpdateStatusModel()
+            -- Check if measurements have completed
+            lTMState = trigger.model.state()
+            if lTMState == trigger.STATE_IDLE and lTMState ~= lLastTMState then
+                gTriggerModel.EndTriggerModel()
+            end
+            lLastTMState = lTMState
             delay(0.0003)
+        end
+        if gDEVMODE and eventlog.getcount() > 0 then
+            print(eventlog.next())
         end
         --collectgarbage()
     end
@@ -3940,71 +4106,6 @@ end
 
 --============================================================================
 --
--- Measurement Trigger Model
---
---============================================================================
-
-local gTriggerModel = {
-    tmInitialized = false
-}
-
-gTriggerModel.InitializeTM = function()
-    -- Trigger Delay Timer
-    trigger.timer[1].clear()
-    trigger.timer[1].count = 1
-    -- Stimulus is the trigger model event
-    trigger.timer[1].start.stimulus = trigger.EVENT_NOTIFY1
-    -- 0 if autodelay
-    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
-        trigger.timer[1].delay = gInstrumentState.General.Trigger_Delay.value
-    end
-    trigger.timer[1].enable = trigger.ON
-
-    local tm = trigger.model
-    tm.load("Empty")
-    if gInstrumentState.General.Trigger_Source.value == "EXT" then
-        tm.setblock(1, trigger.BLOCK_WAIT, trigger.EVENT_EXTERNAL, trigger.CLEAR_ENTER)
-    elseif gInstrumentState.General.Trigger_Source.value == "IMM" then
-        tm.setblock(1, trigger.BLOCK_NOP)
-    end
-    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
-        -- Notify trigger delay timer to start
-        tm.setblock(2, trigger.BLOCK_NOTIFY, trigger.EVENT_NOTIFY1)
-        -- Wait for trigger delay timer
-        tm.setblock(3, trigger.BLOCK_WAIT, trigger.EVENT_TIMER1)
-    else
-        tm.setblock(2, trigger.BLOCK_NOP)
-        tm.setblock(3, trigger.BLOCK_NOP)
-    end
-
-    -- Take measurement
-    tm.setblock(4, trigger.BLOCK_MEASURE_DIGITIZE, gReadingMemory.readingBuffer, 1)
-    
-    -- Loop back to notify
-    tm.setblock(5, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Sample_Count.value, 2)
-    -- Loop back to wait
-    tm.setblock(6, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Trigger_Count.value, 1)
-
-    gTriggerModel.tmInitialized = true
-end
-
-gTriggerModel.InitiateMeasurements = function()
-    if not gTriggerModel.tmInitialized then
-        gTriggerModel.InitializeTM()
-    end
-    gLastMeasurement.index = 1
-    gLastMeasurement.value = gNan
-    gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
-    local lCurrentStateVars = gInstrumentState.Measure_Function.value.stateVariables
-    if lCurrentStateVars and lCurrentStateVars.Null_Value_Auto.value then
-        lCurrentStateVars.Null_State.value = gInstrumentAttributes.OnOff.ON
-        gRel.acquire()
-    end
-    trigger.model.initiate()
-end
-
---============================================================================
---
 -- SCPI Command Definitions
 --
 -- This section is where the command tables are populated and command
@@ -4495,13 +4596,23 @@ end
 -- DATA:LAST?
 gCurrentRoot = gCommandTree["DATA"]["LAST"]
 gCurrentRoot.mQuery.mExecute = function()
-    print(
-        string.format(
-            "%s %s",
-            FormatNumber(gReadingMemory.readingBuffer[gReadingMemory.readingBuffer.endindex],true),
-            gLastMeasurement.units
+    if trigger.model.state() == trigger.STATE_RUNNING then
+        print(
+            string.format(
+                "%s %s",
+                FormatNumber(gReadingMemory.readingBuffer[gReadingMemory.readingBuffer.endindex],true),
+                gLastMeasurement.units
+            )
         )
-    )
+    else
+        print(
+            string.format(
+                "%s %s",
+                FormatNumber(gLastMeasurement.value,true),
+                gLastMeasurement.units
+            )
+        )
+    end
 end
 -- DATA:POINts?
 gCurrentRoot = gCommandTree["DATA"]["POINTS"]
