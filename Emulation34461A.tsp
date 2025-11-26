@@ -62,14 +62,24 @@ end
 --
 --============================================================================
 
+local NullFunction = function () end
+
 local gDEVMODE = true
 
 local gInitialized = false      -- Has instrument been initialized
 local gCommandTree              -- This structure will all commands including their paths and execution functions
 local gErrorQueue = {}          -- This is the errorqueue structure
+local gTriggerModel = {}
+gTriggerModel.EndTriggerModel = NullFunction
+local quesStatus    = {}
+local operStatus    = {}
+local standardEvent = {}
+
+local StatusModel   = {SetCondition = NullFunction}
 
 local gAccessors = {}               -- Setter and getter functions 
 local gRemoteComm = ki.remotecomm   -- Internal command that recieves instrument communication
+local gAbort = false
 
 --[[BUFFER VARIABLES FOR MEASUREMENTS]]
 -- Initialize the reading buffer as described in 34461A manual
@@ -82,8 +92,6 @@ local gReadingMemory =
 }
 gReadingMemory.readingBuffer = buffer.make(gReadingMemory.bufferSize, buffer.STYLE_STANDARD)
 gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
-
-local NullFunction = function () end
 
 -- Byte representation of commonly used characters
 local gCharCodes =
@@ -163,11 +171,13 @@ gSpecialCommands["$Empty"].mCommand.mExecute = NullFunction
 --
 --============================================================================
 
-local gMathAbs = math.abs
-local gTypeDcl = gRemoteComm.types.DCL
-local Print = gRemoteComm.partialprint
-local gMeasure = dmm.measure
-local gRel = gMeasure.rel
+local gMathAbs      = math.abs
+local gTypeDcl      = gRemoteComm.types.DCL
+local Print         = gRemoteComm.partialprint
+local gMeasure      = dmm.measure
+local gRel          = gMeasure.rel
+local gTM           = trigger.model
+local gTriggerTimer = trigger.timer[1]
 
 local gNan = 9.91e37
 local gInf = 9.90e37
@@ -206,6 +216,14 @@ gAccessors.mGetMeasureNPLC          = makegetter(gMeasure, "nplc")
 gAccessors.mGetAutozeroEnable       = makegetter(gMeasure.autozero, "enable")
 gAccessors.mGetExtinSlope           = makegetter(trigger.extin, "edge")
 gAccessors.mGetTerminals            = makegetter(dmm, "terminals")
+
+gAccessors.mSetTriggerTimerCount    = makesetter(gTriggerTimer, "count")
+gAccessors.mSetTriggerTimerStimulus = makesetter(gTriggerTimer.start, "stimulus")
+gAccessors.mSetTriggerTimerDelay    = makesetter(gTriggerTimer, "delay")
+gAccessors.mSetTriggerTimerEnable   = makesetter(gTriggerTimer, "enable")
+
+gAccessors.mGetStatusCondition      = makegetter(status, "condition")
+gAccessors.mGetStatusStandardEvent  = makegetter(status.standard, "event")
 
 --============================================================================
 --
@@ -397,6 +415,13 @@ local gInstrumentState =
 
     General = 
     {
+        Data_Event_Threshold =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
         Sample_Count =
         {
             value = nil,
@@ -1015,6 +1040,7 @@ end
 local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
     ResetGeneral = function()
+        gInstrumentState.General.Data_Event_Threshold.value = 1
         gInstrumentState.General.Sample_Count.value         = 1
         gInstrumentState.General.Trigger_Count.value        = 1
         gInstrumentState.General.Trigger_Delay_Auto.value   = gInstrumentAttributes.Auto_Delay.ON
@@ -1191,6 +1217,7 @@ gReadingMemory.reset = function()
     gReadingMemory.readingBuffer.clear()
     gReadingMemory.lastRemoved = -1
     gReadingMemory.units = gInstrumentState.Measure_Function.value.units
+    StatusModel.SetCondition(operStatus, 9)
 end
 
 ------------------------------------------------------------------------------
@@ -1208,103 +1235,6 @@ ResetDefaults = function ()
 end
 
 ResetScriptVariables()
-
---============================================================================
---
--- Measurement Trigger Model
---
---============================================================================
-
-local gTriggerModel = {
-    tmInitialized = false
-}
-
-------------------------------------------------------------------------------
---
---  InitializeTM
---
---  Load the measurement trigger model with user specified settings
---
-------------------------------------------------------------------------------
-
-gTriggerModel.InitializeTM = function()
-    -- Trigger Delay Timer
-    trigger.timer[1].clear()
-    trigger.timer[1].count = 1
-    -- Stimulus is the trigger model event
-    trigger.timer[1].start.stimulus = trigger.EVENT_NOTIFY1
-    -- 0 if autodelay
-    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
-        trigger.timer[1].delay = gInstrumentState.General.Trigger_Delay.value
-    end
-    trigger.timer[1].enable = trigger.ON
-
-    local tm = trigger.model
-    tm.load("Empty")
-    if gInstrumentState.General.Trigger_Source.value == "EXT" then
-        tm.setblock(1, trigger.BLOCK_WAIT, trigger.EVENT_EXTERNAL, trigger.CLEAR_ENTER)
-    elseif gInstrumentState.General.Trigger_Source.value == "IMM" then
-        tm.setblock(1, trigger.BLOCK_NOP)
-    end
-    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
-        -- Notify trigger delay timer to start
-        tm.setblock(2, trigger.BLOCK_NOTIFY, trigger.EVENT_NOTIFY1)
-        -- Wait for trigger delay timer
-        tm.setblock(3, trigger.BLOCK_WAIT, trigger.EVENT_TIMER1)
-    else
-        tm.setblock(2, trigger.BLOCK_NOP)
-        tm.setblock(3, trigger.BLOCK_NOP)
-    end
-
-    -- Take measurement
-    tm.setblock(4, trigger.BLOCK_MEASURE_DIGITIZE, gReadingMemory.readingBuffer, 1)
-    
-    -- Loop back to notify
-    tm.setblock(5, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Sample_Count.value, 2)
-    -- Loop back to wait
-    tm.setblock(6, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Trigger_Count.value, 1)
-
-    gTriggerModel.tmInitialized = true
-end
-
-------------------------------------------------------------------------------
---
---  InitiateMeasurements
---
---  Initiate a new set of measurements
---
-------------------------------------------------------------------------------
-
-gTriggerModel.InitiateMeasurements = function()
-    if not gTriggerModel.tmInitialized then
-        gTriggerModel.InitializeTM()
-    end
-    gLastMeasurement.index = 1
-    gLastMeasurement.value = gNan
-    gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
-    local lCurrentStateVars = gInstrumentState.Measure_Function.value.stateVariables
-    if lCurrentStateVars and lCurrentStateVars.Null_Value_Auto.value then
-        lCurrentStateVars.Null_State.value = gInstrumentAttributes.OnOff.ON
-        gRel.acquire()
-    end
-    trigger.model.initiate()
-end
-
-------------------------------------------------------------------------------
---
---  EndTriggerModel
---
---  When the trigger model is completed
---
-------------------------------------------------------------------------------
-
-gTriggerModel.EndTriggerModel = function()
-    print("HEY")
-    -- Store the last measurement for DATA:LAST?
-    gLastMeasurement.index = gReadingMemory.readingBuffer.endindex
-    if gLastMeasurement.index == 0 then gLastMeasurement.value = gNan
-    else gLastMeasurement.value = gReadingMemory.readingBuffer[gLastMeasurement.index] end
-end
 
 --============================================================================
 --
@@ -1960,6 +1890,7 @@ gParserTable.mParseAny          = {mParse = gParserTable.ParseParameterAny, mOpt
 gParserTable.mParseNRf          = {mParse = gParserTable.ParseParameterNRf}
 gParserTable.mParseNRfOptional  = {mParse = gParserTable.ParseParameterNRf, mOptional = true}
 gParserTable.mParseBooleanKeywords = {mParse = gParserTable.ParseParameterBoolean}
+gParserTable.mParseInteger      = {mParse = gParserTable.ParseParameterIntegerNRf}
 
 gParserTable.mParseDCVoltageRangeKeywords =
 {
@@ -2131,7 +2062,7 @@ gParserTable.mParseSampleCount =
     mParse = gParserTable.ParseParameterChoice,
     mData =
     {
-        {mParse = gParserTable.ParseParameterIntegerNRf},
+        gParserTable.mParseInteger,
         gParserTable.mParseSampleCountKeywords
     }
 }
@@ -2970,7 +2901,7 @@ Engine34461A = function ()
     gRemoteComm.intercept = gRemoteComm.ALL
     gOrigin = nil
 
-    local lLastTMState = trigger.model.state()
+    local lLastTMState = gTM.state()
     local lTMState = lLastTMState
 
     GetNewMessage = GetFirstCommandMessage
@@ -2981,9 +2912,9 @@ Engine34461A = function ()
             ExecuteMessage()
         else
             -- Update status model here.
-            --UpdateStatusModel()
+            UpdateStatusModel()
             -- Check if measurements have completed
-            lTMState = trigger.model.state()
+            lTMState = gTM.state()
             if lTMState == trigger.STATE_IDLE and lTMState ~= lLastTMState then
                 gTriggerModel.EndTriggerModel()
             end
@@ -3019,6 +2950,145 @@ end
 
 --============================================================================
 --
+--  Utility functions
+--
+--============================================================================
+
+-- Status model registers
+quesStatus        = {mCondition = 0, mEvent = 0, mEventEnable = 0, mSummary = 4}
+operStatus        = {mCondition = 0, mEvent = 0, mEventEnable = 0, mSummary = 8}
+standardEvent     = {                mEvent = 0, mEventEnable = 0, mSummary = 6}
+
+StatusModel       = {mStatus = 0, mEventEnable = 0}
+
+StatusModel.SetCondition = function (lRegister, lBit)
+    local lCondition = bit.set(lRegister.mCondition, lBit)
+    if lCondition ~= lRegister.mCondition then
+        lRegister.mCondition = lCondition
+        StatusModel.SetEvent(lRegister, lBit)
+    end
+end
+
+StatusModel.ClearCondition = function (lRegister, lBit)
+    lRegister.mCondition = bit.clear(lRegister.mCondition, lBit)
+end
+
+StatusModel.SetEvent = function (lRegister, lBit)
+    local lEvent = bit.set(lRegister.mEvent, lBit)
+    if lEvent ~= lRegister.mEvent then
+        lRegister.mEvent = lEvent
+        if bit.bitand(lEvent, lRegister.mEventEnable) > 0 then
+            StatusModel.SetSummary(lRegister.mSummary)
+        end
+    end
+end
+
+StatusModel.SetEvents = function (lRegister, lMask)
+    local lEvent = bit.bitor(lRegister.mEvent, lMask)
+    if lEvent ~= lRegister.mEvent then
+        lRegister.mEvent = lEvent
+        if bit.bitand(lEvent, lRegister.mEventEnable) > 0 then
+            StatusModel.SetSummary(lRegister.mSummary)
+        end
+    end
+end
+
+StatusModel.ClearEvent = function (lRegister)
+    lRegister.mEvent = 0
+    StatusModel.ClearSummary(lRegister.mSummary)
+end
+
+StatusModel.SetEnable = function (lRegister, lValue)
+    lRegister.mEventEnable = lValue
+    if lRegister.mEvent then
+        if bit.bitand(lRegister.mEvent, lRegister.mEventEnable) > 0 then
+            StatusModel.SetSummary(lRegister.mSummary)
+        else
+            StatusModel.ClearSummary(lRegister.mSummary)
+        end
+    else
+        lRegister.mEventEnable = bit.clear(lRegister.mEventEnable, 7)
+    end
+end
+
+StatusModel.SetSummary = function (lBit)
+    local lStatus = bit.set(StatusModel.mStatus, lBit)
+    if lStatus ~= StatusModel.mStatus then
+        StatusModel.mStatus = lStatus
+        -- Set the RQS
+        if bit.bitand(StatusModel.mEventEnable, lStatus) > 0 then
+            StatusModel.mStatus = bit.set(StatusModel.mStatus, 7)
+        end
+        --gRemoteCommStatus.condition = lStatus
+    end
+end
+
+StatusModel.ClearSummary = function (lBit)
+    local lStatus = bit.clear(StatusModel.mStatus, lBit)
+    if lStatus ~= StatusModel.mStatus then
+        StatusModel.mStatus = lStatus
+        if bit.bitand(StatusModel.mStatus, StatusModel.mEventEnable) == 0 then
+            StatusModel.mStatus = bit.clear(StatusModel.mStatus, 7)
+        end
+        --gRemoteCommStatus.condition = lStatus
+    end
+end
+
+------------------------------------------------------------------------------
+--
+--  UpdateStatusModel
+--
+------------------------------------------------------------------------------
+
+UpdateStatusModel = function ()
+    local lStatusCondition = gAccessors.mGetStatusCondition()
+    -- Update the Error available bit
+    if bit.bitand(lStatusCondition, 4) > 0 then
+        StatusModel.SetSummary(4)
+    end
+    -- Update the output buffer bit
+    if bit.bitand(lStatusCondition, 16) > 0 then
+        StatusModel.SetCondition(16)
+    end
+    -- Update Reading memory threshold 
+    if gReadingMemory.readingBuffer.n >= gInstrumentState.General.Data_Event_Threshold.value then
+        StatusModel.SetCondition(operStatus, 10)
+    else
+        StatusModel.ClearCondition(operStatus, 10)
+    end
+
+    -- Update Standard Event Register
+    -- (OPC (Bit 0), QYE (Bit 2), PON (Bit 7) bits are directly read from 6500 status model)
+    local lEvents
+    lEvents = gAccessors.mGetStatusStandardEvent()
+    if lEvents > 0 then
+        StatusModel.SetEvents(standardEvent, bit.bitand(lEvents, 133))
+    end
+end
+
+------------------------------------------------------------------------------
+--
+--  WaitForEvent
+--
+--  Process command input (so we can look for triggers and aborts) while
+--  waiting for an event. This function takes a function argument that must
+--  return true when the event is detected. This function will loop until the
+--  given function returns true.
+--
+------------------------------------------------------------------------------
+
+local WaitForEvent = function (lCheck)
+    while true do
+        PriorityExecute()
+        if lCheck() then
+            return
+        end
+        UpdateStatusModel()
+    end
+end
+
+--============================================================================
+--
 -- Command Tables
 --
 -- This table holds the SCPI command tree. First the command hierarchy is
@@ -3031,10 +3101,16 @@ end
 gCommandTree = 
 {
     ["*IDN"] = {mQuery = {}},
+    ["*CLS"] = {mCommand = {}},
+    ["*ESE"] = {mCommand = {}, mQuery = {}},
+    ["*ESR"] = {mQuery = {}},
+    ["*PSC"] = {mQuery = {}},
     ["*RST"] = {mCommand = {}},
+    ["*SRE"] = {mCommand = {}, mQuery = {}},
+    ["*STB"] = {mQuery = {}},
     ["ABORT"] =
     {
-        mCommand = {},
+        mCommand = {mPriority = true},
     },
     ["CONFIGURE"] =
     {
@@ -3425,6 +3501,47 @@ gCommandTree =
             },
         },
     },
+    ["STATUS"] =
+    {
+        ["OPERATION"] =
+        {
+            mQuery = {},
+            ["CONDITION"] =
+            {
+                mQuery = {},
+            },
+            ["ENABLE"] =
+            {
+                mCommand = {},
+                mQuery = {},
+            },
+            ["EVENT"] =
+            {
+                mQuery = {},
+            },
+        },
+        ["PRESET"] =
+        {
+            mCommand = {},
+        },
+        ["QUESTIONABLE"] =
+        {
+            mQuery = {},
+            ["CONDITION"] =
+            {
+                mQuery = {},
+            },
+            ["ENABLE"] =
+            {
+                mCommand = {},
+                mQuery = {},
+            },
+            ["EVENT"] =
+            {
+                mQuery = {},
+            },
+        }
+    },
     ["TRIGGER"] =
     {
         ["COUNT"] =
@@ -3555,6 +3672,19 @@ gCommandTree["DATA"]["POIN"]                            = gCommandTree["DATA"]["
 gCommandTree["DATA"]["POINTS"]["EVEN"]                  = gCommandTree["DATA"]["POINTS"]["EVENT"]
 gCommandTree["DATA"]["POINTS"]["EVENT"]["THR"]          = gCommandTree["DATA"]["POINTS"]["EVENT"]["THRESHOLD"]
 gCommandTree["DATA"]["REM"]                             = gCommandTree["DATA"]["REMOVE"]
+
+gCommandTree["STAT"]                                    = gCommandTree["STATUS"]
+gCommandTree["STATUS"]["OPER"]                          = gCommandTree["STATUS"]["OPERATION"]
+gCommandTree["STATUS"]["OPERATION"]["COND"]             = gCommandTree["STATUS"]["OPERATION"]["CONDITION"]
+gCommandTree["STATUS"]["OPERATION"]["ENAB"]             = gCommandTree["STATUS"]["OPERATION"]["ENABLE"]
+gCommandTree["STATUS"]["OPERATION"]["EVEN"]             = gCommandTree["STATUS"]["OPERATION"]["EVENT"]
+gCommandTree["STATUS"]["OPERATION"].mQuery              = gCommandTree["STATUS"]["OPERATION"]["EVENT"].mQuery
+gCommandTree["STATUS"]["PRE"]                           = gCommandTree["STATUS"]["PRESET"]
+gCommandTree["STATUS"]["QUES"]                          = gCommandTree["STATUS"]["QUESTIONABLE"]
+gCommandTree["STATUS"]["QUESTIONABLE"]["COND"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["CONDITION"]
+gCommandTree["STATUS"]["QUESTIONABLE"]["ENAB"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["ENABLE"]
+gCommandTree["STATUS"]["QUESTIONABLE"]["EVEN"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"]
+gCommandTree["STATUS"]["QUESTIONABLE"].mQuery           = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"].mQuery
 
 gCommandTree["TRIG"]                                    = gCommandTree["TRIGGER"]
 gCommandTree["TRIGGER"]["COUN"]                         = gCommandTree["TRIGGER"]["COUNT"]
@@ -4049,6 +4179,102 @@ gErrorQueue.PrintErrorEvents = function (lState)
     Print(")")
 end
 
+--============================================================================
+--
+-- Measurement Trigger Model
+--
+--============================================================================
+
+local gTriggerModel = {
+    tmInitialized = false
+}
+
+------------------------------------------------------------------------------
+--
+--  InitializeTM
+--
+--  Load the measurement trigger model with user specified settings
+--
+------------------------------------------------------------------------------
+
+gTriggerModel.InitializeTM = function()
+    -- Trigger Delay Timer
+    gTriggerTimer.clear()
+    gAccessors.mSetTriggerTimerCount(1)
+    -- Stimulus is the trigger model event
+    gAccessors.mSetTriggerTimerStimulus(trigger.EVENT_NOTIFY1)
+    -- 0 if autodelay
+    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
+        gAccessors.mSetTriggerTimerDelay(gInstrumentState.General.Trigger_Delay.value)
+    end
+    gAccessors.mSetTriggerTimerEnable(trigger.ON)
+
+    gTM.load("Empty")
+    if gInstrumentState.General.Trigger_Source.value == "EXT" then
+        gTM.setblock(1, trigger.BLOCK_WAIT, trigger.EVENT_EXTERNAL, trigger.CLEAR_ENTER)
+    elseif gInstrumentState.General.Trigger_Source.value == "IMM" then
+        gTM.setblock(1, trigger.BLOCK_NOP)
+    end
+    if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
+        -- Notify trigger delay timer to start
+        gTM.setblock(2, trigger.BLOCK_NOTIFY, trigger.EVENT_NOTIFY1)
+        -- Wait for trigger delay timer
+        gTM.setblock(3, trigger.BLOCK_WAIT, trigger.EVENT_TIMER1)
+    else
+        gTM.setblock(2, trigger.BLOCK_NOP)
+        gTM.setblock(3, trigger.BLOCK_NOP)
+    end
+
+    -- Take measurement
+    gTM.setblock(4, trigger.BLOCK_MEASURE_DIGITIZE, gReadingMemory.readingBuffer, 1)
+    
+    -- Loop back to notify
+    gTM.setblock(5, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Sample_Count.value, 2)
+    -- Loop back to wait
+    gTM.setblock(6, trigger.BLOCK_BRANCH_COUNTER, gInstrumentState.General.Trigger_Count.value, 1)
+
+    gTriggerModel.tmInitialized = true
+end
+
+------------------------------------------------------------------------------
+--
+--  InitiateMeasurements
+--
+--  Initiate a new set of measurements
+--
+------------------------------------------------------------------------------
+
+gTriggerModel.InitiateMeasurements = function()
+    if not gTriggerModel.tmInitialized then
+        gTriggerModel.InitializeTM()
+    end
+    StatusModel.ClearCondition(operStatus, 9)
+    gLastMeasurement.index = 1
+    gLastMeasurement.value = gNan
+    gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
+    local lCurrentStateVars = gInstrumentState.Measure_Function.value.stateVariables
+    if lCurrentStateVars and lCurrentStateVars.Null_Value_Auto.value then
+        lCurrentStateVars.Null_State.value = gInstrumentAttributes.OnOff.ON
+        gRel.acquire()
+    end
+    gTM.initiate()
+end
+
+------------------------------------------------------------------------------
+--
+--  EndTriggerModel
+--
+--  When the trigger model is completed
+--
+------------------------------------------------------------------------------
+
+gTriggerModel.EndTriggerModel = function()
+    -- Store the last measurement for DATA:LAST?
+    gLastMeasurement.index = gReadingMemory.readingBuffer.endindex
+    if gLastMeasurement.index == 0 then gLastMeasurement.value = gNan
+    else gLastMeasurement.value = gReadingMemory.readingBuffer[gLastMeasurement.index] end
+end
+
 ------------------------------------------------------------------------------
 -- Print functions
 --
@@ -4119,6 +4345,7 @@ end
 --
 -----------------------------------------------------------------------------
 
+-- *IDN?
 gCurrentRoot = gCommandTree["*IDN"]
 gCurrentRoot.mQuery.mExecute = function()
     print(
@@ -4130,6 +4357,61 @@ gCurrentRoot.mQuery.mExecute = function()
         )
     )
 end
+-- *CLS
+gCurrentRoot = gCommandTree["*CLS"]
+gCurrentRoot.mCommand.mExecute = function()
+    StatusModel.ClearEvent(quesStatus)
+    StatusModel.ClearEvent(operStatus)
+    StatusModel.ClearEvent(standardEvent)
+    gErrorQueue.Clear()
+end
+-- *ESE <enable_value>
+gCurrentRoot = gCommandTree["*ESE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseInteger}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lEventEnable = lParameters[1]
+    if lEventEnable >= 0 and lEventEnable <= 256 then
+        StatusModel.SetEnable(standardEvent, lEventEnable)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- *ESE?
+gCurrentRoot.mQuery.mExecute = function()
+    print(standardEvent.mEventEnable)
+end
+-- *ESR?
+gCurrentRoot = gCommandTree["*ESR"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(standardEvent.mEvent)
+    StatusModel.ClearEvent(standardEvent)
+end
+-- *PSC?
+gCurrentRoot = gCommandTree["*PSC"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(0)
+end
+-- *SRE <enable_value>
+gCurrentRoot = gCommandTree["*SRE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseInteger}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lEventEnable = lParameters[1]
+    if lEventEnable >= 0 and lEventEnable <= 256 then
+        StatusModel.SetEnable(StatusModel, lEventEnable)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- *SRE?
+gCurrentRoot.mQuery.mExecute = function()
+    print(StatusModel.mEventEnable)
+end
+-- *STB?
+gCurrentRoot = gCommandTree["*STB"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(StatusModel.mStatus)
+end
+-- *RST
 gCurrentRoot = gCommandTree["*RST"]
 gCurrentRoot.mCommand.mExecute = function()
     -- Reset to 34461A defaults
@@ -4138,7 +4420,8 @@ end
 -- ABORt
 gCurrentRoot = gCommandTree["ABORT"]
 gCurrentRoot.mCommand.mExecute = function()
-    trigger.model.abort()
+    gTM.abort()
+    gAbort = true
     -- Find some way to break waitcompletes and waiting for measurements
 end
 -- INITiate[:IMMediate]
@@ -4204,7 +4487,7 @@ end
 -- DEV Command to exit program
 gCurrentRoot = gCommandTree["DEV"]["EXIT"]
 gCurrentRoot.mCommand.mExecute = function()
-    trigger.model.abort()
+    gTM.abort()
     EndEmulation()
 end
 
@@ -4625,7 +4908,20 @@ gCurrentRoot.mQuery.mExecute = function()
     )
 end
 -- DATA:POINts:EVENt:THReshold <count>
+gCurrentRoot = gCommandTree["DATA"]["POINTS"]["EVENT"]["THRESHOLD"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseInteger}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lPoints = lParameters[1]
+    if lPoints >= 1 and lPoints <= gReadingMemory.bufferSize then
+        gInstrumentState.General.Data_Event_Threshold.value = lPoints
+    else
+        gErrorQueue.Add(-222)
+    end
+end
 -- DATA:POINts:EVENt:THReshold?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Data_Event_Threshold.value)
+end
 -- DATA:REMove? <num_readings> [,WAIT]
 gCurrentRoot = gCommandTree["DATA"]["REMOVE"]
 gCurrentRoot.mQuery.mParameters =
@@ -4666,6 +4962,9 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
             lReadingsAvail = gReadingMemory.readingBuffer.n - lRemovedPoints
             -- Wait for readings to accumulate
             while lReadingsAvail < lNumReadings do
+                -- Check for priority commands
+                PriorityExecute()
+                if gAbort then gAbort = false return end
                 -- Calculate the readings available and the number of removed data points
                 lReadingsAvail = gReadingMemory.readingBuffer.n
                 lRemovedPoints = 0
@@ -4680,9 +4979,10 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
                 end
                 lReadingsAvail = gReadingMemory.readingBuffer.n - lRemovedPoints
                 -- Check that trigger model isn't idle
-                if trigger.model.state() == trigger.STATE_IDLE and lReadingsAvail < lNumReadings then
+                if gTM.state() ~= trigger.STATE_RUNNING and gTM.state() ~= trigger.STATE_WAITING and lReadingsAvail < lNumReadings then
                     return
                 end
+                UpdateStatusModel()
                 delay(1e-3)
             end
         else
@@ -5551,8 +5851,6 @@ gCurrentRoot.mQuery.mExecute = function()
     )
 end
 
-
-
 ------------------------------------------------------------------------------
 --
 -- [SENSe:]VOLTage:AC subsystem
@@ -5985,6 +6283,69 @@ gCurrentRoot.mQuery.mExecute = function()
             gInstrumentState.DC_Voltage.Zero_Auto.value.shorthand
         )
     )
+end
+
+------------------------------------------------------------------------------
+--
+-- STATus subsystem
+--
+-----------------------------------------------------------------------------
+
+--STATus:OPERation:CONDition?
+gCurrentRoot = gCommandTree["STATUS"]["OPERATION"]["CONDITION"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(operStatus.mCondition)
+end
+--STATus:OPERation:ENABle <enable_value>
+gCurrentRoot = gCommandTree["STATUS"]["OPERATION"]["ENABLE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseInteger}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lEventEnable = lParameters[1]
+    if lEventEnable >= 0 and lEventEnable <= 32768 then
+        StatusModel.SetEnable(operStatus, lEventEnable)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+--STATus:OPERation:ENABle?
+gCurrentRoot.mQuery.mExecute = function()
+    print(operStatus.mEventEnable)
+end
+--STATus:OPERation[:EVENt]?
+gCurrentRoot = gCommandTree["STATUS"]["OPERATION"]["EVENT"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(operStatus.mEvent)
+    StatusModel.ClearEvent(operStatus)
+end
+--STATus:PRESet
+gCurrentRoot = gCommandTree["STATUS"]["PRESET"]
+gCurrentRoot.mCommand.mExecute = function()
+    quesStatus.mEventEnable = 0
+    operStatus.mEventEnable = 0
+end
+--STATus:QUEStionable:CONDition?
+gCurrentRoot = gCommandTree["STATUS"]["QUESTIONABLE"]["CONDITION"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(quesStatus.mCondition)
+end
+--STATus:QUEStionable:ENABle <enable_value>
+gCurrentRoot = gCommandTree["STATUS"]["QUESTIONABLE"]["ENABLE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseInteger}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lEventEnable = lParameters[1]
+    if lEventEnable >= 0 and lEventEnable <= 32768 then
+        StatusModel.SetEnable(quesStatus, lEventEnable)
+    end
+end
+--STATus:QUEStionable:ENABle?
+gCurrentRoot.mQuery.mExecute = function()
+    print(quesStatus.mEventEnable)
+end
+--STATus:QUEStionable[:EVENt]?
+gCurrentRoot = gCommandTree["STATUS"]["QUESTIONABLE"]["ENABLE"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(quesStatus.mEvent)
+    StatusModel.ClearEvent(quesStatus)
 end
 
 ------------------------------------------------------------------------------
