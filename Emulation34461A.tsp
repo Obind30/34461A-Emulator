@@ -28,7 +28,7 @@
 
 reset()
 
-local gPLC = 60                 -- Power Line Frequency
+local gPLC = localnode.linefreq -- Power Line Frequency
 local gDisplayErrors = true     -- Display errors to screen
 local gErrorReadback = false    -- Send errors back when they occur
 
@@ -790,6 +790,7 @@ local gInstrumentAttributes =
             DMM_Enum = dmm.FUNC_DC_VOLTAGE,
             stateVariables = gInstrumentState.DC_Voltage,
             units = "VDC",
+            overload_bit = 1,
         },
         AC_Voltage = 
         {
@@ -797,26 +798,30 @@ local gInstrumentAttributes =
             DMM_Enum = dmm.FUNC_AC_VOLTAGE,
             stateVariables = gInstrumentState.AC_Voltage,
             units = "VAC",
+            overload_bit = 1,
         },
         DC_Current = 
         {
             shorthand = "CURR",
             DMM_Enum = dmm.FUNC_DC_CURRENT,
             stateVariables = gInstrumentState.DC_Current,
-            units = "ADC"
+            units = "ADC",
+            overload_bit = 2,
         },
         AC_Current = 
         {
             shorthand = "CURR:AC",
             DMM_Enum = dmm.FUNC_AC_CURRENT,
             stateVariables = gInstrumentState.AC_Current,
-            units = "AAC"
+            units = "AAC",
+            overload_bit = 2,
         },
         Temperature = 
         {
             shorthand = "TEMP",
             DMM_Enum = dmm.FUNC_TEMPERATURE,
             stateVariables = nil,
+            overload_bit = 5,
         },
         Resistance = 
         {
@@ -824,6 +829,7 @@ local gInstrumentAttributes =
             DMM_Enum = dmm.FUNC_RESISTANCE,
             stateVariables = gInstrumentState.Resistance,
             units = "OHM",
+            overload_bit = 10,
         },
         FResistance = 
         {
@@ -831,42 +837,49 @@ local gInstrumentAttributes =
             DMM_Enum = dmm.FUNC_4W_RESISTANCE,
             stateVariables = gInstrumentState.FResistance,
             units = "OHM",
+            overload_bit = 10,
         },
         Diode = 
         {
             shorthand = "DIOD",
             DMM_Enum = dmm.FUNC_DIODE,
             stateVariables = nil,
+            overload_bit = 0,
         },
         Capacitance = 
         {
             shorthand = "CAP",
             DMM_Enum = dmm.FUNC_CAPACITANCE,
             stateVariables = nil,
+            overload_bit = 11,
         },
         Continuity = 
         {
             shorthand = "CONT",
             DMM_Enum = dmm.FUNC_CONTINUITY,
             stateVariables = nil,
+            overload_bit = 0,
         },
         Frequency = 
         {
             shorthand = "FREQ",
             DMM_Enum = dmm.FUNC_ACV_FREQUENCY,
             stateVariables = nil,
+            overload_bit = 6,
         },
         Period = 
         {
             shorthand = "PER",
             DMM_Enum = dmm.FUNC_ACV_PERIOD,
             stateVariables = nil,
+            overload_bit = 6,
         },
         Ratio = 
         {
             shorthand = "VOLT:RAT",
             DMM_Enum = dmm.FUNC_DCV_RATIO,
             stateVariables = gInstrumentState.DC_Voltage,
+            overload_bit = 0,
         },
     },
     OnOff =
@@ -3044,11 +3057,15 @@ UpdateStatusModel = function ()
     local lStatusCondition = gAccessors.mGetStatusCondition()
     -- Update the Error available bit
     if bit.bitand(lStatusCondition, 4) > 0 then
-        StatusModel.SetSummary(4)
+        StatusModel.SetSummary(3)
+    else
+        StatusModel.ClearSummary(3)
     end
     -- Update the output buffer bit
     if bit.bitand(lStatusCondition, 16) > 0 then
-        StatusModel.SetCondition(16)
+        StatusModel.SetSummary(5)
+    else
+        StatusModel.ClearSummary(5)
     end
     -- Update Reading memory threshold 
     if gReadingMemory.readingBuffer.n >= gInstrumentState.General.Data_Event_Threshold.value then
@@ -3056,7 +3073,29 @@ UpdateStatusModel = function ()
     else
         StatusModel.ClearCondition(operStatus, 10)
     end
-
+    -- Update Waiting for trigger
+    if gTM.state() == trigger.STATE_WAITING then
+        StatusModel.SetCondition(operStatus, 6)
+    else
+        StatusModel.ClearCondition(operStatus, 6)
+    end
+    -- Update overload bits
+    local lBufferStats = buffer.getstats(gReadingMemory.readingBuffer)
+    if lBufferStats.max then
+        if lBufferStats.max.reading == gInf then
+            StatusModel.SetEvent(
+                quesStatus, 
+                gInstrumentState.Measure_Function.value.overload_bit
+            )
+        end
+    end
+    -- Update reading overflow bit
+    if gReadingMemory.readingBuffer.n == gReadingMemory.bufferSize 
+    and gReadingMemory.readingBuffer.startindex ~= gReadingMemory.bufferSize then
+        StatusModel.SetCondition(quesStatus, 15)
+    else
+        StatusModel.ClearCondition(quesStatus, 15)
+    end
     -- Update Standard Event Register
     -- (OPC (Bit 0), QYE (Bit 2), PON (Bit 7) bits are directly read from 6500 status model)
     local lEvents
@@ -4185,7 +4224,7 @@ end
 --
 --============================================================================
 
-local gTriggerModel = {
+gTriggerModel = {
     tmInitialized = false
 }
 
@@ -4249,6 +4288,7 @@ gTriggerModel.InitiateMeasurements = function()
         gTriggerModel.InitializeTM()
     end
     StatusModel.ClearCondition(operStatus, 9)
+    StatusModel.SetCondition(operStatus, 5)
     gLastMeasurement.index = 1
     gLastMeasurement.value = gNan
     gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
@@ -4273,6 +4313,7 @@ gTriggerModel.EndTriggerModel = function()
     gLastMeasurement.index = gReadingMemory.readingBuffer.endindex
     if gLastMeasurement.index == 0 then gLastMeasurement.value = gNan
     else gLastMeasurement.value = gReadingMemory.readingBuffer[gLastMeasurement.index] end
+    StatusModel.ClearCondition(operStatus, 5)
 end
 
 ------------------------------------------------------------------------------
@@ -4434,12 +4475,11 @@ end
 gCurrentRoot = gCommandTree["R"]
 gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNRfOptional}
 gCurrentRoot.mQuery.mExecute = function(lParameters)
-    if lParameters[1] >= 1 and lParameters[1] <= 2000000 then
-        local lMaxReadings = gReadingMemory.bufferSize
-        if lParameters[1] then
-            lMaxReadings = lParameters[1]
-        end
-
+    local lMaxReadings = gReadingMemory.bufferSize
+    if lParameters[1] then
+        lMaxReadings = lParameters[1]
+    end
+    if lMaxReadings >= 1 and lMaxReadings <= 2000000 then
         local lStart = gReadingMemory.readingBuffer.startindex
         if lStart == 0 then
             return
