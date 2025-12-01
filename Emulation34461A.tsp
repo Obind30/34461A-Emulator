@@ -292,6 +292,23 @@ local gOperatingBoundaries =
             min = -10   --
         },
     },
+    Capacitance =
+    {
+        Range =
+        {
+            -- Range better on 6500, default same as 34461
+            max = 100e-6,
+            def = 1e-6,
+            min = 1e-9
+        },
+        Null =
+        {
+            -- Max/Min better on 6500
+            max = 1e-3,
+            def = 0,
+            min = -1e-3
+        },
+    },
     AC_Voltage =
     {
         Range =
@@ -481,6 +498,44 @@ local gInstrumentState =
     -- * Math Functions           Disabled, Other parameters unchanged
     -- * Per-function Null State  Disabled
 
+    Capacitance = 
+    {
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Range =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureRange,
+            setter = gAccessors.mSetMeasureRange,
+        },
+        Range_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureAutorange,
+            setter = gAccessors.mSetMeasureAutorange,
+        },
+    },
     AC_Current =
     {
         Bandwidth =
@@ -850,7 +905,7 @@ local gInstrumentAttributes =
         {
             shorthand = "CAP",
             DMM_Enum = dmm.FUNC_CAPACITANCE,
-            stateVariables = nil,
+            stateVariables = gInstrumentState.Capacitance,
             overload_bit = 11,
         },
         Continuity = 
@@ -945,6 +1000,10 @@ gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.
 
 gInstrumentState.General.Trigger_Delay_Auto.valueParent = gInstrumentAttributes.Auto_Delay
 gInstrumentState.General.Trigger_Slope.valueParent      = gInstrumentAttributes.Trigger_Slope
+
+gInstrumentState.Capacitance.Null_State.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.Capacitance.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+gInstrumentState.Capacitance.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
 
 gInstrumentState.AC_Current.Bandwidth.valueParent       = gInstrumentAttributes.Detector_Bandwidth
 gInstrumentState.AC_Current.Null_State.valueParent      = gInstrumentAttributes.OnOff
@@ -1061,6 +1120,13 @@ local gResetFunctionVariables = {
         gInstrumentState.General.Trigger_Slope.value        = gInstrumentAttributes.Trigger_Slope.Negative
         gInstrumentState.General.Trigger_Source.value       = "IMM"
     end,
+    ResetCapacitance = function()
+        gInstrumentState.Capacitance.Null_State.value        = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Capacitance.Null_Value.value        = 0
+        gInstrumentState.Capacitance.Null_Value_Auto.value   = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Capacitance.Range.value             = 1e-6
+        gInstrumentState.Capacitance.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
+    end,
     ResetACCurrent = function()
         -- AC CURRENT VARIABLES
         gInstrumentState.AC_Current.Bandwidth.value         = gInstrumentAttributes.Detector_Bandwidth.HZ30
@@ -1133,6 +1199,7 @@ local gResetFunctionVariables = {
 local ResetScriptVariables = function()
         gInstrumentState.Measure_Function.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
         gResetFunctionVariables.ResetGeneral()
+        gResetFunctionVariables.ResetCapacitance()
         gResetFunctionVariables.ResetDCCurrent()
         gResetFunctionVariables.ResetACCurrent()
         gResetFunctionVariables.ResetDCVoltage()
@@ -1155,6 +1222,12 @@ local gSetFunctionAttributes =
     SetGeneral = function()
         gAccessors.mSetMeasureAutodelay(gInstrumentState.General.Trigger_Delay_Auto.value.DMM_Enum)
         gAccessors.mSetExtinSlope(gInstrumentState.General.Trigger_Slope.value.DMM_Enum)
+    end,
+    SetCapacitance = function()
+        gAccessors.mSetRelEnable(gInstrumentState.Capacitance.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.Capacitance.Null_Value.value)
+        gAccessors.mSetMeasureRange(gInstrumentState.Capacitance.Range.value)
+        gAccessors.mSetMeasureAutorange(gInstrumentState.Capacitance.Range_Auto.value.DMM_Enum)
     end,
     SetACCurrent = function()
         gAccessors.mSetDetectorBandwidth(gInstrumentState.AC_Current.Bandwidth.value.DMM_Enum)
@@ -2311,6 +2384,52 @@ gParserTable.mParseACCBandwidth =
         gParserTable.mParseACCBandwidthKeywords
     }
 }
+gParserTable.mParseCapNullValueKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Capacitance.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Capacitance.Null.min,
+        ["MAX"]         = gOperatingBoundaries.Capacitance.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Capacitance.Null.max,
+        ["DEF"]         = gOperatingBoundaries.Capacitance.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Capacitance.Null.def,
+    }
+}
+gParserTable.mParseCapNullValue =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseCapNullValueKeywords,
+    }
+}
+gParserTable.mParseCapRangeKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Capacitance.Range.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Capacitance.Range.min,
+        ["MAX"]         = gOperatingBoundaries.Capacitance.Range.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Capacitance.Range.max,
+        ["DEF"]         = gOperatingBoundaries.Capacitance.Range.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Capacitance.Range.def,
+    }
+}
+gParserTable.mParseCapRange =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseCapRangeKeywords,
+    }
+}
 
 ------------------------------------------------------------------------------
 --
@@ -3247,6 +3366,13 @@ gCommandTree =
     {
         mQuery = {},
     },
+    ["ROUTE"] =
+    {
+        ["TERMINALS"] =
+        {
+            mQuery = {},
+        },
+    },
     ["SAMPLE"] =
     {
         ["COUNT"] =
@@ -3257,6 +3383,39 @@ gCommandTree =
     },
     ["SENSE"] =
     {
+        ["CAPACITANCE"] =
+        {
+            ["NULL"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["STATE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["VALUE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                    ["AUTO"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                    },
+                },
+            },  
+            ["RANGE"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["AUTO"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },  
+        },
         ["CURRENT"] =
         {       
             ["AC"] =
@@ -3643,6 +3802,16 @@ gCommandTree["SENS"]                                    = gCommandTree["SENSE"]
 gCommandTree["FUNCTION"]                                = gCommandTree["SENSE"]["FUNCTION"]
 gCommandTree["FUNC"]                                    = gCommandTree["SENSE"]["FUNCTION"]
 
+gCommandTree["CAPACITANCE"]                             = gCommandTree["SENSE"]["CAPACITANCE"]
+gCommandTree["CAP"]                                     = gCommandTree["SENSE"]["CAPACITANCE"]
+gCommandTree["SENSE"]["CAP"]                            = gCommandTree["SENSE"]["CAPACITANCE"]
+gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STAT"]    = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VAL"]     = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["CAPACITANCE"]["NULL"].mCommand   = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["CAPACITANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"].mQuery
+gCommandTree["SENSE"]["CAPACITANCE"]["RANG"]            = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]
+
+
 gCommandTree["CURRENT"]                                 = gCommandTree["SENSE"]["CURRENT"]
 gCommandTree["CURR"]                                    = gCommandTree["SENSE"]["CURRENT"]
 gCommandTree["SENSE"]["CURR"]                           = gCommandTree["SENSE"]["CURRENT"]
@@ -3724,6 +3893,9 @@ gCommandTree["STATUS"]["QUESTIONABLE"]["COND"]          = gCommandTree["STATUS"]
 gCommandTree["STATUS"]["QUESTIONABLE"]["ENAB"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["ENABLE"]
 gCommandTree["STATUS"]["QUESTIONABLE"]["EVEN"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"]
 gCommandTree["STATUS"]["QUESTIONABLE"].mQuery           = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"].mQuery
+
+gCommandTree["ROUT"]                                    = gCommandTree["ROUTE"]
+gCommandTree["ROUTE"]["TERM"]                           = gCommandTree["ROUTE"]["TERMINALS"]
 
 gCommandTree["TRIG"]                                    = gCommandTree["TRIGGER"]
 gCommandTree["TRIGGER"]["COUN"]                         = gCommandTree["TRIGGER"]["COUNT"]
@@ -5053,6 +5225,22 @@ end
 
 ------------------------------------------------------------------------------
 --
+-- ROUTe subsystem
+--
+-----------------------------------------------------------------------------
+
+gCurrentRoot = gCommandTree["ROUTE"]["TERMINALS"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lTerminals = gAccessors.mGetTerminals()
+    if lTerminals == dmm.TERMINALS_FRONT then
+        print("FRON")
+    else
+        print("REAR")
+    end
+end
+
+------------------------------------------------------------------------------
+--
 -- SAMPle subsystem
 --
 -----------------------------------------------------------------------------
@@ -5081,6 +5269,171 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
         string.format(
             "%s",
             FormatNumber(sampleCount, true)
+        )
+    )
+end
+
+------------------------------------------------------------------------------
+--
+-- [SENSe:]CAPacitance:AC subsystem
+--
+-----------------------------------------------------------------------------
+
+-- [SENSe:]CAPacitance:NULL[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lNullState = lParameters[1]
+    -- Update null state variable
+    if lNullState == true then
+        gInstrumentState.Capacitance.Null_State.value = gInstrumentAttributes.OnOff.ON
+    elseif lNullState == false then
+        gInstrumentState.Capacitance.Null_State.value = gInstrumentAttributes.OnOff.OFF
+    end
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Capacitance then
+        gInstrumentState.Capacitance.Null_State.setter(gInstrumentState.Capacitance.Null_State.value.shorthand)
+    end
+end
+-- [SENSe:]CAPacitance:NULL[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Capacitance.Null_State.value.shorthand
+        )
+    )
+end
+-- [SENSe:]CAPacitance:NULL:VALue {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VALUE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseCapNullValue}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local relLevel = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.Capacitance.Null_Value
+    if relLevel <= gOperatingBoundaries.Capacitance.Null.max and
+       relLevel >= gOperatingBoundaries.Capacitance.Null.min then
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.Capacitance then
+            lNullVal.setter(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]CAPacitance:NULL:VALue? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseCapNullValueKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintNullValue = lParameters[1]
+    if lPrintNullValue == nil then
+        lPrintNullValue = gInstrumentState.Capacitance.Null_Value.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintNullValue, true)
+        )
+    )
+end
+-- [SENSe:]CAPacitance:NULL:VALue:AUTO {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VALUE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    if lParameters[1] == true then
+        gInstrumentState.Capacitance.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
+    elseif lParameters[1] == false then
+        gInstrumentState.Capacitance.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
+    end
+end
+-- [SENSe:]CAPacitance:NULL:VALue:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Capacitance.Null_Value_Auto.value.shorthand
+        )
+    )
+end
+-- [SENSe:]CAPacitance:RANGe {<range>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseCapRange}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lMeasureRange = lParameters[1]
+    local lInstAutorange = gInstrumentState.Capacitance.Range_Auto
+    local lInstRange = gInstrumentState.Capacitance.Range
+    if gMathAbs(lMeasureRange) <= 1.10 * gOperatingBoundaries.Capacitance.Range.max then
+        -- Turn autorange off
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+        -- Find the appropriate range and set there
+        for _, lRange in ipairs(gRangeTable.Capacitance) do
+            if gMathAbs(lMeasureRange) <= 1.10 * lRange then
+                lInstRange.value = lRange
+                break
+            end
+        end
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Capacitance then
+            lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+            gAccessors.mSetMeasureRange(lInstRange.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]CAPacitance:RANGe? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseCapRangeKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintRange = lParameters[1]
+    if lPrintRange == nil then
+        lPrintRange = gInstrumentState.Capacitance.Range.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintRange, true)
+        )
+    )
+end
+-- [SENSe:]CAPacitance:RANGe:AUTO {OFF|ON|ONCE}
+gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.reset()
+    local lAutorange = lParameters[1]
+    local lInstAutorange = gInstrumentState.Capacitance.Range_Auto
+    if lAutorange == "ONCE" then
+        -- Turn autorange on
+        lInstAutorange.setter(gInstrumentAttributes.OnOff.ON.shorthand)
+        -- Store some measurement parameters to reset
+        local lMeasCount = gAccessors.mGetMeasureCount()
+        local lMeasFunc = gAccessors.mGetMeasureFunction()
+        -- Take a single measurement to set
+        gAccessors.mSetMeasureCount(1)
+        gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.Capacitance.DMM_Enum)
+        gMeasure.read()
+        gInstrumentState.Capacitance.Range.value = gAccessors.mGetMeasureRange()
+        gAccessors.mSetMeasureCount(lMeasCount)
+        gAccessors.mSetMeasureFunction(lMeasFunc)
+        lAutorange = false
+    end
+    if lAutorange == true then
+        lInstAutorange.value = gInstrumentAttributes.OnOff.ON
+    elseif lAutorange == false then
+        lInstAutorange.value = gInstrumentAttributes.OnOff.OFF
+    end
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Capacitance then
+        lInstAutorange.setter(lInstAutorange.value.DMM_Enum)
+    end
+end
+-- [SENSe:]CAPacitance:RANGe:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Capacitance.Range_Auto.value.shorthand
         )
     )
 end
