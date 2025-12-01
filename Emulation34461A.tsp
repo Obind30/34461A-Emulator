@@ -225,6 +225,17 @@ gAccessors.mSetTriggerTimerEnable   = makesetter(gTriggerTimer, "enable")
 gAccessors.mGetStatusCondition      = makegetter(status, "condition")
 gAccessors.mGetStatusStandardEvent  = makegetter(status.standard, "event")
 
+local gLimit = gMeasure.limit[1]
+
+gAccessors.mGetLimitEnable          = makegetter(gLimit, "enable")
+gAccessors.mGetLimitFail            = makegetter(gLimit, "fail")
+gAccessors.mGetLimitHigh            = makegetter(gLimit.high, "value")
+gAccessors.mGetLimitLow             = makegetter(gLimit.low, "value")
+
+gAccessors.mSetLimitEnable          = makesetter(gLimit, "enable")
+gAccessors.mSetLimitHigh            = makesetter(gLimit.high, "value")
+gAccessors.mSetLimitLow             = makesetter(gLimit.low, "value")
+
 --============================================================================
 --
 -- Model specific tables
@@ -1306,6 +1317,12 @@ gReadingMemory.reset = function()
     StatusModel.SetCondition(operStatus, 9)
 end
 
+local ResetLimits = function()
+    gLimit.clear()
+    StatusModel.ClearCondition(quesStatus, 12)
+    StatusModel.ClearCondition(quesStatus, 13)
+end
+
 ------------------------------------------------------------------------------
 --
 --  ResetDefaults
@@ -1318,6 +1335,9 @@ ResetDefaults = function ()
     ResetScriptVariables()
     ResetDMMSettings()
     gReadingMemory.reset()
+    ResetLimits()
+    gAccessors.mSetLimitLow(0)
+    gAccessors.mSetLimitHigh(0)
 end
 
 ResetScriptVariables()
@@ -2430,6 +2450,29 @@ gParserTable.mParseCapRange =
         gParserTable.mParseCapRangeKeywords,
     }
 }
+gParserTable.mParseLimitKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = -1e12,
+        ["MINIMUM"]     = -1e12,
+        ["MAX"]         = 1e12,
+        ["MAXIMUM"]     = 1e12,
+        ["DEF"]         = 0,
+        ["DEFAULT"]     = 0,
+    }
+}
+gParserTable.mParseLimit =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseLimitKeywords,
+    }
+}
 
 ------------------------------------------------------------------------------
 --
@@ -3198,6 +3241,16 @@ UpdateStatusModel = function ()
     else
         StatusModel.ClearCondition(operStatus, 6)
     end
+    -- Update Limit Bits
+    local lLimitFail = gAccessors.mGetLimitFail()
+    if lLimitFail == dmm.FAIL_HIGH then
+        StatusModel.SetCondition(quesStatus, 13)
+    elseif lLimitFail == dmm.FAIL_LOW then
+        StatusModel.SetCondition(quesStatus, 12)
+    elseif lLimitFail == dmm.FAIL_BOTH then
+        StatusModel.SetCondition(quesStatus, 12)
+        StatusModel.SetCondition(quesStatus, 13)
+    end
     -- Update overload bits
     local lBufferStats = buffer.getstats(gReadingMemory.readingBuffer)
     if lBufferStats.max then
@@ -3269,6 +3322,47 @@ gCommandTree =
     ["ABORT"] =
     {
         mCommand = {mPriority = true},
+    },
+    ["CALCULATE"] =
+    {
+        ["LIMIT"] =
+        {
+            mCommand = {},
+            mQuery = {},
+            ["CLEAR"] =
+            {
+                mCommand = {},
+                ["IMMEDIATE"] =
+                {
+                    mCommand = {},
+                },
+            },
+            ["LOWER"] =
+            {
+                mCommand = {},
+                mQuery = {},
+                ["DATA"] =
+                {
+                    mCommand = {},
+                    mQuery = {},
+                },
+            },
+            ["UPPER"] =
+            {
+                mCommand = {},
+                mQuery = {},
+                ["DATA"] =
+                {
+                    mCommand = {},
+                    mQuery = {},
+                },
+            },
+            ["STATE"] =
+            {
+                mCommand = {},
+                mQuery = {},
+            }
+        }
     },
     ["CONFIGURE"] =
     {
@@ -3792,6 +3886,22 @@ gCommandTree["INITIATE"]["IMMEDIATE"].mQuery            = gCommandTree["INITIATE
 gCommandTree["INITIATE"]["IMMEDIATE"].mCommand          = gCommandTree["INITIATE"].mCommand
 gCommandTree["INITIATE"]["IMM"]                         = gCommandTree["INITIATE"]["IMMEDIATE"]
 
+gCommandTree["CALC"]                                    = gCommandTree["CALCULATE"]
+gCommandTree["CALCULATE"]["LIM"]                        = gCommandTree["CALCULATE"]["LIMIT"]
+gCommandTree["CALCULATE"]["LIMIT"].mCommand             = gCommandTree["CALCULATE"]["LIMIT"]["STATE"].mCommand
+gCommandTree["CALCULATE"]["LIMIT"].mQuery               = gCommandTree["CALCULATE"]["LIMIT"]["STATE"].mQuery
+gCommandTree["CALCULATE"]["LIMIT"]["STAT"]              = gCommandTree["CALCULATE"]["LIMIT"]["STATE"]
+gCommandTree["CALCULATE"]["LIMIT"]["CLE"]               = gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"]
+gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"].mCommand    = gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"]["IMMEDIATE"].mCommand
+gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"].mQuery      = gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"]["IMMEDIATE"].mQuery
+gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"]["IMM"]      = gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"]["IMMEDIATE"]
+gCommandTree["CALCULATE"]["LIMIT"]["LOW"]               = gCommandTree["CALCULATE"]["LIMIT"]["LOWER"]
+gCommandTree["CALCULATE"]["LIMIT"]["UPP"]               = gCommandTree["CALCULATE"]["LIMIT"]["UPPER"]
+gCommandTree["CALCULATE"]["LIMIT"]["LOWER"].mCommand    = gCommandTree["CALCULATE"]["LIMIT"]["LOWER"]["DATA"].mCommand
+gCommandTree["CALCULATE"]["LIMIT"]["LOWER"].mQuery      = gCommandTree["CALCULATE"]["LIMIT"]["LOWER"]["DATA"].mQuery
+gCommandTree["CALCULATE"]["LIMIT"]["UPPER"].mCommand    = gCommandTree["CALCULATE"]["LIMIT"]["UPPER"]["DATA"].mCommand
+gCommandTree["CALCULATE"]["LIMIT"]["UPPER"].mQuery      = gCommandTree["CALCULATE"]["LIMIT"]["UPPER"]["DATA"].mQuery
+
 gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
 gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
@@ -3825,7 +3935,6 @@ gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VAL"]     = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["CAPACITANCE"]["NULL"].mCommand   = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"].mCommand
 gCommandTree["SENSE"]["CAPACITANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"].mQuery
 gCommandTree["SENSE"]["CAPACITANCE"]["RANG"]            = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]
-
 
 gCommandTree["CURRENT"]                                 = gCommandTree["SENSE"]["CURRENT"]
 gCommandTree["CURR"]                                    = gCommandTree["SENSE"]["CURRENT"]
@@ -4474,6 +4583,7 @@ gTriggerModel.InitiateMeasurements = function()
     if not gTriggerModel.tmInitialized then
         gTriggerModel.InitializeTM()
     end
+    ResetLimits()
     StatusModel.ClearCondition(operStatus, 9)
     StatusModel.SetCondition(operStatus, 5)
     gLastMeasurement.index = 1
@@ -4540,6 +4650,7 @@ local ChangeMeasFunction = function(measFunction)
     lInstMeasFunc.value = measFunction
     lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
     CheckTerminals()
+    ResetLimits()
     -- Iterate through measurement attibutes, checking and setting them
     if lInstMeasFunc.value.stateVariables then
         for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
@@ -4715,6 +4826,95 @@ end
 
 ------------------------------------------------------------------------------
 --
+-- CALCulate:AVERage subsystem
+--
+-----------------------------------------------------------------------------
+
+-- CALCulate:AVERage:ALL?
+-- CALCulate:AVERage:AVERage?
+-- CALCulate:AVERage:CLEar[:IMMediate]
+-- CALCulate:AVERage:COUNt?
+-- CALCulate:AVERage:MAXimum?
+-- CALCulate:AVERage:MINimum?
+-- CALCulate:AVERage:PTPeak?
+-- CALCulate:AVERage:SDEViation?
+-- CALCulate:AVERage[:STATe] {OFF|ON}
+-- CALCulate:AVERage[:STATe]?
+
+------------------------------------------------------------------------------
+--
+-- CALCulate:LIMit subsystem
+--
+-----------------------------------------------------------------------------
+
+-- CALCulate:LIMit:CLEar[:IMMediate]
+gCurrentRoot = gCommandTree["CALCULATE"]["LIMIT"]["CLEAR"]
+gCurrentRoot.mCommand.mExecute = function()
+    ResetLimits()
+end
+-- CALCulate:LIMit:LOWer[:DATA] {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["CALCULATE"]["LIMIT"]["LOWER"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseLimit}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lLimit = lParameters[1]
+    if lLimit >= -1e12 and lLimit <= 1e12 then
+        gAccessors.mSetLimitLow(lLimit)
+    else
+        gErrorQueue.Add(-222)
+        return
+    end
+end
+-- CALCulate:LIMit:LOWer[:DATA]? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseLimitKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lLimit = lParameters[1]
+    if lLimit == nil then lLimit = gAccessors.mGetLimitLow() end
+    print(FormatNumber(lLimit, true))
+end
+-- CALCulate:LIMit:UPPer[:DATA] {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["CALCULATE"]["LIMIT"]["UPPER"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseLimit}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lLimit = lParameters[1]
+    if lLimit >= -1e12 and lLimit <= 1e12 then
+        gAccessors.mSetLimitHigh(lLimit)
+    else
+        gErrorQueue.Add(-222)
+        return
+    end
+end
+-- CALCulate:LIMit:UPPer[:DATA]? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseLimitKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lLimit = lParameters[1]
+    if lLimit == nil then lLimit = gAccessors.mGetLimitHigh() end
+    print(FormatNumber(lLimit, true))
+end
+-- CALCulate:LIMit[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["CALCULATE"]["LIMIT"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lLimitState = lParameters[1]
+    if lLimitState == true then 
+        ResetLimits() 
+        gAccessors.mSetLimitEnable(dmm.ON)
+    else
+        gAccessors.mSetLimitEnable(dmm.OFF)
+    end
+end
+-- CALCulate:LIMit[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    local lLimitState = gAccessors.mGetLimitEnable()
+    if lLimitState == dmm.ON then
+        print(1)
+    else
+        print(0)
+    end
+end
+
+
+------------------------------------------------------------------------------
+--
 -- CONFigure subsystem
 --
 -----------------------------------------------------------------------------
@@ -4772,6 +4972,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetCapacitance()
     gSetFunctionAttributes.SetCapacitance()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -4794,6 +4995,7 @@ gCurrentRoot.mCommand.mExecute = function()
     gResetFunctionVariables.ResetGeneral()
     gSetFunctionAttributes.SetGeneral()
     gReadingMemory.reset()
+    ResetLimits()
 end
 -- CONFigure:CURRent:AC [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["CURRENT"]["AC"]
@@ -4833,6 +5035,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetACCurrent()
     gSetFunctionAttributes.SetACCurrent()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -4884,6 +5087,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetDCCurrent()
     gSetFunctionAttributes.SetDCCurrent()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -4906,6 +5110,7 @@ gCurrentRoot.mCommand.mExecute = function()
     gResetFunctionVariables.ResetGeneral()
     gSetFunctionAttributes.SetGeneral()
     gReadingMemory.reset()
+    ResetLimits()
 end
 -- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["FRESISTANCE"]
@@ -4945,6 +5150,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetFResistance()
     gSetFunctionAttributes.SetFResistance()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -4996,6 +5202,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetResistance()
     gSetFunctionAttributes.SetResistance()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -5047,6 +5254,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetACVoltage()
     gSetFunctionAttributes.SetACVoltage()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -5098,6 +5306,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
@@ -5149,6 +5358,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
     gReadingMemory.reset()
+    ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
     if lMeasureRange then
