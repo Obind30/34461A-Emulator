@@ -3277,6 +3277,14 @@ gCommandTree =
         {
             mCommand = {},
         },
+        ["CAPACITANCE"] =
+        {
+            mCommand = {},
+        },
+        ["CONTINUITY"] =
+        {
+            mCommand = {},
+        },
         ["CURRENT"] =
         {
             ["AC"] =
@@ -3287,6 +3295,10 @@ gCommandTree =
             {
                 mCommand = {},
             },
+        },
+        ["DIODE"] =
+        {
+            mCommand = {},
         },
         ["DC"] =
         {
@@ -3790,6 +3802,9 @@ gCommandTree["CONFIGURE"]["DC"]["RAT"]                  = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RATIO"]           = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["RAT"]             = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["CURR"]                       = gCommandTree["CONFIGURE"]["CURRENT"]
+gCommandTree["CONFIGURE"]["CAP"]                        = gCommandTree["CONFIGURE"]["CAPACITANCE"]
+gCommandTree["CONFIGURE"]["CONT"]                       = gCommandTree["CONFIGURE"]["CONTINUITY"]
+gCommandTree["CONFIGURE"]["DIOD"]                       = gCommandTree["CONFIGURE"]["DIODE"]
 
 gCommandTree["CONFIGURE"]["RES"]                        = gCommandTree["CONFIGURE"]["RESISTANCE"]
 gCommandTree["CONFIGURE"]["FRES"]                       = gCommandTree["CONFIGURE"]["FRESISTANCE"]
@@ -4532,12 +4547,14 @@ local ChangeMeasFunction = function(measFunction)
     lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
     CheckTerminals()
     -- Iterate through measurement attibutes, checking and setting them
-    for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
-        if lValue.setter then
-            if type(lValue.value) == "number" then
-                lValue.setter(lValue.value)
-            else
-                lValue.setter(lValue.value.DMM_Enum)
+    if lInstMeasFunc.value.stateVariables then
+        for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
+            if lValue.setter then
+                if type(lValue.value) == "number" then
+                    lValue.setter(lValue.value)
+                else
+                    lValue.setter(lValue.value.DMM_Enum)
+                end
             end
         end
     end
@@ -4724,6 +4741,67 @@ gCurrentRoot.mQuery.mExecute = function()
         )
     )
 end
+-- CONFigure:CAPacitance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["CAPACITANCE"]
+gCurrentRoot.mCommand.mParameters =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.Capacitance.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.Capacitance.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.Capacitance.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.Capacitance.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.Capacitance.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.Capacitance.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Capacitance
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to Capacitance defaults
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gResetFunctionVariables.ResetCapacitance()
+    gSetFunctionAttributes.SetCapacitance()
+    gReadingMemory.reset()
+    -- Set the measure range
+    local lMeasureRange = lParameters[1]
+    if lMeasureRange then
+        if lMeasureRange == "AUTO" then
+            gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]["AUTO"].mCommand.mExecute({"ON"})
+        elseif lMeasureRange <= gOperatingBoundaries.Capacitance.Range.max
+        and    lMeasureRange >= gOperatingBoundaries.Capacitance.Range.min then
+            gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"].mCommand.mExecute({lMeasureRange})
+        else
+            gErrorQueue.Add(-222)
+        end
+    end
+end
+-- CONFigure:CONTinuity
+gCurrentRoot = gCommandTree["CONFIGURE"]["CONTINUITY"]
+gCurrentRoot.mCommand.mExecute = function()
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Continuity
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gReadingMemory.reset()
+end
 -- CONFigure:CURRent:AC [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["CURRENT"]["AC"]
 gCurrentRoot.mCommand.mParameters =
@@ -4825,6 +4903,16 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
             gErrorQueue.Add(-222)
         end
     end
+end
+-- CONFigure:DIODe
+gCurrentRoot = gCommandTree["CONFIGURE"]["DIODE"]
+gCurrentRoot.mCommand.mExecute = function()
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Diode
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gReadingMemory.reset()
 end
 -- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["FRESISTANCE"]
@@ -5962,8 +6050,8 @@ gCurrentRoot.mCommand.mParameters =
             ["CURRENT"]         = gInstrumentAttributes.Meas_Functions.DC_Current,
             ["CURR"]            = gInstrumentAttributes.Meas_Functions.DC_Current,
             
-            ["DIODE"]           = gInstrumentAttributes.Meas_Functions.DIODE,
-            ["DIOD"]            = gInstrumentAttributes.Meas_Functions.DIODE,
+            ["DIODE"]           = gInstrumentAttributes.Meas_Functions.Diode,
+            ["DIOD"]            = gInstrumentAttributes.Meas_Functions.Diode,
 
             ["FREQUENCY"]       = gInstrumentAttributes.Meas_Functions.Frequency,
             ["FREQ"]            = gInstrumentAttributes.Meas_Functions.Frequency,
