@@ -4519,18 +4519,12 @@ end
 local FormatBuffer = function (lStart, lCount, remove)
     local lBuffer = gReadingMemory.readingBuffer
 
-    -- print(lStart)
     local lFormatString = FormatNumber(lBuffer.readings[lStart], true)
     for i=1, lCount-1 do
         lFormatString = lFormatString .. "," .. FormatNumber(lBuffer.readings[math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1], true)
-        --Printing timestamps to ensure continuity
-        --print(gReadingMemory.readingBuffer.relativetimestamps[math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1])
-        --print(math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1)
     end
     if remove then
-        --print(math.mod(lStart+(lCount-1-1), gReadingMemory.bufferSize)+1)
         gReadingMemory.lastRemoved = lBuffer.relativetimestamps[math.mod(lStart+(lCount-1-1), gReadingMemory.bufferSize)+1]
-        --print(gReadingMemory.lastRemoved)
     end
     return lFormatString
 end
@@ -4558,6 +4552,24 @@ local ChangeMeasFunction = function(measFunction)
             end
         end
     end
+end
+
+local FindStartIndex = function()
+    local lStart = gReadingMemory.readingBuffer.startindex
+    if lStart == 0 then
+        return 0, 0
+    end
+    local lRemovedPoints = 0
+    -- While timestamp is less than the last removed timestamp
+    while lStart <= gReadingMemory.readingBuffer.n and gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+        lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+        lRemovedPoints = lRemovedPoints+1
+        -- If all data points are removed
+        if lStart == gReadingMemory.readingBuffer.startindex then
+            return
+        end
+    end
+    return lStart, gReadingMemory.readingBuffer.n - lRemovedPoints
 end
 
 --============================================================================
@@ -4669,22 +4681,8 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
         lMaxReadings = lParameters[1]
     end
     if lMaxReadings >= 1 and lMaxReadings <= 2000000 then
-        local lStart = gReadingMemory.readingBuffer.startindex
-        if lStart == 0 then
-            return
-        end
-        while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
-            lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
-            if lStart == gReadingMemory.readingBuffer.startindex then
-                return
-            end
-        end
-
-        local lDataAvailable = gReadingMemory.readingBuffer.endindex - lStart + 1
-        if lDataAvailable == 0 then 
-            lDataAvailable = gReadingMemory.bufferSize
-        end
-
+        local lStart, lDataAvailable = FindStartIndex()
+        if lDataAvailable == 0 then return end
         print(FormatBlockLength(FormatBuffer(lStart, math.min(lMaxReadings,lDataAvailable), true)))
     else
         gErrorQueue.Add(-222)
@@ -4702,14 +4700,9 @@ end
 gCurrentRoot = gCommandTree["FETCH"]
 gCurrentRoot.mQuery.mExecute = function()
     waitcomplete() -- May need to change to only wait for trigger model
-    local lStart = gReadingMemory.readingBuffer.startindex
-    while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
-        print(gReadingMemory.readingBuffer.relativetimestamps[lStart], gReadingMemory.lastRemoved)
-        lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
-        if lStart == gReadingMemory.readingBuffer.startindex then
-            return
-        end
-    end
+    local lStart, lDataAvailable = FindStartIndex()
+    if lDataAvailable == 0 then return end
+    --local lStart = gReadingMemory.readingBuffer.startindex
     print(FormatBuffer(lStart, gReadingMemory.readingBuffer.n, false))
 end
 -- DEV:EXIT
@@ -5200,10 +5193,11 @@ end
 -- DATA:POINts?
 gCurrentRoot = gCommandTree["DATA"]["POINTS"]
 gCurrentRoot.mQuery.mExecute = function()
+    local lStart, lDataAvailable = FindStartIndex()
     print(
         string.format(
             "%s",
-            FormatNumber(gReadingMemory.readingBuffer.n,true)
+            FormatNumber(lDataAvailable,true)
         )
     )
 end
@@ -5246,38 +5240,18 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
         return
     end
     if lNumReadings <= gReadingMemory.bufferSize then
+        local lStart, lReadingsAvail = FindStartIndex()
         if lWait then
-            -- Calculate the readings available and the number of removed data points
-            local lReadingsAvail = gReadingMemory.readingBuffer.n
-            local lRemovedPoints = 0
-            -- While timestamp is less than the last removed timestamp
-            while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
-                lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
-                lRemovedPoints = lRemovedPoints+1
-                -- If all data points are removed
-                if lStart == gReadingMemory.readingBuffer.startindex then
-                    return
-                end
-            end
-            lReadingsAvail = gReadingMemory.readingBuffer.n - lRemovedPoints
             -- Wait for readings to accumulate
             while lReadingsAvail < lNumReadings do
                 -- Check for priority commands
                 PriorityExecute()
-                if gAbort then gAbort = false return end
-                -- Calculate the readings available and the number of removed data points
-                lReadingsAvail = gReadingMemory.readingBuffer.n
-                lRemovedPoints = 0
-                -- While timestamp is less than the last removed timestamp
-                while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
-                    lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
-                    lRemovedPoints = lRemovedPoints+1
-                    -- If all data points are removed
-                    if lStart == gReadingMemory.readingBuffer.startindex then
-                        return
-                    end
+                if gAbort then
+                    gAbort = false
+                    return
                 end
-                lReadingsAvail = gReadingMemory.readingBuffer.n - lRemovedPoints
+                -- Calculate the readings available and the number of removed data points
+                lStart, lReadingsAvail = FindStartIndex()
                 -- Check that trigger model isn't idle
                 if gTM.state() ~= trigger.STATE_RUNNING and gTM.state() ~= trigger.STATE_WAITING and lReadingsAvail < lNumReadings then
                     return
@@ -5287,25 +5261,12 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
             end
         else
             -- Calculate the readings available, not counting deleted readings
-            local lReadingsAvail = gReadingMemory.readingBuffer.n
-            -- While the current index is deleted
-            while gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
-                -- Increment Start index, decrement available readings
-                lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
-                lReadingsAvail = lReadingsAvail-1
-                -- If there are no non-removed readings
-                if lStart == gReadingMemory.readingBuffer.startindex then
-                    gErrorQueue.Add(-222)
-                    return
-                end
-            end
             if lNumReadings > lReadingsAvail then
                 gErrorQueue.Add(-222) -- Change to appropriate number
                 return
             end
         end
-        -- lStartIndex = gReadingMemory.readingBuffer.startindex
-        print(FormatBuffer(lStart,lNumReadings, true))
+        print(FormatBuffer(lStart, lNumReadings, true))
     else
         gErrorQueue.Add(-222)
     end
