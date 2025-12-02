@@ -246,6 +246,15 @@ gAccessors.mSetLimitEnable          = makesetter(gLimit, "enable")
 gAccessors.mSetLimitHigh            = makesetter(gLimit.high, "value")
 gAccessors.mSetLimitLow             = makesetter(gLimit.low, "value")
 
+gAccessors.mGetDBReference          = makegetter(gMeasure, "dbreference")
+gAccessors.mGetDBMReference         = makegetter(gMeasure, "dbmreference")
+gAccessors.mGetMeasureUnit          = makegetter(gMeasure, "unit")
+
+gAccessors.mSetDBReference          = makesetter(gMeasure, "dbreference")
+gAccessors.mSetDBMReference         = makesetter(gMeasure, "dbmreference")
+gAccessors.mSetMeasureUnit          = makesetter(gMeasure, "unit")
+
+
 --============================================================================
 --
 -- Model specific tables
@@ -412,6 +421,18 @@ local gOperatingBoundaries =
             def = 10,
             min = 0.0005
         },
+        DB_Reference =
+        {
+            max = 1000,
+            def = 1,
+            min = 100e-9,
+        },
+        DBM_Reference =
+        {
+            max = 9999,
+            def = 75,
+            min = 1,
+        },
         Sample_Count =
         {
             max = 1000000,
@@ -460,11 +481,39 @@ local gInstrumentState =
             getter = nil,
             setter = nil,
         },
+        DB_Reference =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetDBReference,
+            setter = gAccessors.mSetDBReference,
+        },
+        DBM_Reference =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetDBMReference,
+            setter = gAccessors.mSetDBMReference,
+        },
         Sample_Count =
         {
             value = nil,
             valueParent = nil,
             -- Sample count handled in trigger model instead
+            getter = nil,
+            setter = nil,
+        },
+        Scale_Function =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureUnit,
+            setter = gAccessors.mSetMeasureUnit,
+        },
+        Scale_State =
+        {
+            value = nil,
+            valueParent = nil,
             getter = nil,
             setter = nil,
         },
@@ -1009,6 +1058,19 @@ local gInstrumentAttributes =
             shorthand = 300,
         },
     },
+    Scale_Unit =
+    {
+        DB =
+        {
+            DMM_Enum = dmm.UNIT_DB,
+            shorthand = "DB"
+        },
+        DBM =
+        {
+            DMM_Enum = dmm.UNIT_DBM,
+            shorthand = "DBM"
+        },
+    },
     Trigger_Slope =
     {
         Positive =
@@ -1026,6 +1088,8 @@ local gInstrumentAttributes =
 
 gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
 
+gInstrumentState.General.Scale_Function.valueParent     = gInstrumentAttributes.Scale_Unit
+gInstrumentState.General.Scale_State.valueParent        = gInstrumentAttributes.OnOff
 gInstrumentState.General.Stats_Enable.valueParent       = gInstrumentAttributes.OnOff
 gInstrumentState.General.Trigger_Delay_Auto.valueParent = gInstrumentAttributes.Auto_Delay
 gInstrumentState.General.Trigger_Slope.valueParent      = gInstrumentAttributes.Trigger_Slope
@@ -1141,9 +1205,14 @@ end
 local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
     ResetGeneral = function()
+        gTriggerModel.tmInitialized = false
+        gInstrumentState.General.DB_Reference.value         = 1
+        gInstrumentState.General.DBM_Reference.value        = 75
+        gInstrumentState.General.Scale_Function.value       = gInstrumentAttributes.Scale_Unit.DB
+        gInstrumentState.General.Scale_State.value          = gInstrumentAttributes.OnOff.OFF
         gInstrumentState.General.Data_Event_Threshold.value = 1
         gInstrumentState.General.Sample_Count.value         = 1
-        gInstrumentState.General.Stats_Enable.value         = gInstrumentAttributes.OnOff.Off
+        gInstrumentState.General.Stats_Enable.value         = gInstrumentAttributes.OnOff.OFF
         gInstrumentState.General.Trigger_Count.value        = 1
         gInstrumentState.General.Trigger_Delay_Auto.value   = gInstrumentAttributes.Auto_Delay.ON
         gInstrumentState.General.Trigger_Delay.value        = 1
@@ -1250,6 +1319,20 @@ end
 local gSetFunctionAttributes = 
 {
     SetGeneral = function()
+        if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
+            gAccessors.mSetDBReference(gInstrumentState.General.DB_Reference.value)
+            gAccessors.mSetDBMReference(gInstrumentState.General.DBM_Reference.value)
+            if(gInstrumentState.General.Scale_State.value == gInstrumentAttributes.OnOff.ON) then
+                gAccessors.mSetMeasureUnit(gInstrumentState.General.Scale_Function.value.DMM_Enum)
+                gInstrumentAttributes.Meas_Functions.DC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+                gInstrumentAttributes.Meas_Functions.AC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+            else
+                gAccessors.mSetMeasureUnit(dmm.UNIT_VOLT)
+                gInstrumentAttributes.Meas_Functions.DC_Voltage.units = "VDC"
+                gInstrumentAttributes.Meas_Functions.AC_Voltage.units = "VC"
+            end
+        end
         gAccessors.mSetMeasureAutodelay(gInstrumentState.General.Trigger_Delay_Auto.value.DMM_Enum)
         gAccessors.mSetExtinSlope(gInstrumentState.General.Trigger_Slope.value.DMM_Enum)
     end,
@@ -1345,7 +1428,11 @@ end
 ------------------------------------------------------------------------------
 
 gReadingMemory.statistics.clear = function()
-    gReadingMemory.lastAvgRemoved           = gReadingMemory.readingBuffer.relativetimestamps[gReadingMemory.readingBuffer.endindex]
+    if gReadingMemory.readingBuffer.endindex ~= 0 then
+        gReadingMemory.lastAvgRemoved = gReadingMemory.readingBuffer.relativetimestamps[gReadingMemory.readingBuffer.endindex]
+    else
+        gReadingMemory.lastAvgRemoved = -1
+    end
     gReadingMemory.statistics.average       = 0
     gReadingMemory.statistics.count         = 0
     gReadingMemory.statistics.max           = 0
@@ -2510,7 +2597,61 @@ gParserTable.mParseLimit =
         gParserTable.mParseLimitKeywords,
     }
 }
-
+gParserTable.mParseDBReferenceKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.General.DB_Reference.min,
+        ["MINIMUM"]     = gOperatingBoundaries.General.DB_Reference.min,
+        ["MAX"]         = gOperatingBoundaries.General.DB_Reference.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.General.DB_Reference.max,
+        ["DEF"]         = gOperatingBoundaries.General.DB_Reference.def,
+        ["DEFAULT"]     = gOperatingBoundaries.General.DB_Reference.def,
+    }
+}
+gParserTable.mParseDBReference =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseDBReferenceKeywords,
+    }
+}
+gParserTable.mParseDBMReferenceKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.General.DBM_Reference.min,
+        ["MINIMUM"]     = gOperatingBoundaries.General.DBM_Reference.min,
+        ["MAX"]         = gOperatingBoundaries.General.DBM_Reference.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.General.DBM_Reference.max,
+        ["DEF"]         = gOperatingBoundaries.General.DBM_Reference.def,
+        ["DEFAULT"]     = gOperatingBoundaries.General.DBM_Reference.def,
+    }
+}
+gParserTable.mParseDBMReference =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseDBMReferenceKeywords,
+    }
+}
+gParserTable.mParseScaleFunction =
+{
+    mParse = gParserTable.ParseParameterName,
+    mNames =
+    {
+        ["DB"]  = gInstrumentAttributes.Scale_Unit.DB,
+        ["DBM"] = gInstrumentAttributes.Scale_Unit.DBM,
+    }
+}
 ------------------------------------------------------------------------------
 --
 --  Parse4882
@@ -2944,6 +3085,7 @@ Initialize34461A = function ()
     gInitialized = true
     --reset()
     ResetDefaults()
+    dmm.measure.limit[1].autoclear = dmm.OFF
     format.byteorder = format.NORMAL
     localnode.prompts = localnode.DISABLE
     localnode.prompts4882 = localnode.DISABLE
@@ -3406,6 +3548,14 @@ gCommandTree =
                 mCommand = {},
             },
         },
+        ["CLEAR"] =
+        {
+            mCommand = {},
+            ["IMMEDIATE"] =
+            {
+                mCommand = {}
+            },
+        },
         ["LIMIT"] =
         {
             mCommand = {},
@@ -3443,7 +3593,38 @@ gCommandTree =
                 mCommand = {},
                 mQuery = {},
             }
-        }
+        },
+        ["SCALE"] =
+        {
+            mQuery = {},
+            mCommand = {},
+            ["DB"] =
+            {
+                ["REFERENCE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+            ["DBM"] =
+            {
+                ["REFERENCE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+            ["FUNCTION"] =
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+            ["STATE"] =
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+        },
     },
     ["CONFIGURE"] =
     {
@@ -3984,6 +4165,10 @@ gCommandTree["CALCULATE"]["AVERAGE"].mQuery             = gCommandTree["CALCULAT
 gCommandTree["CALCULATE"]["AVERAGE"].mCommand           = gCommandTree["CALCULATE"]["AVERAGE"]["STATE"].mCommand
 gCommandTree["CALCULATE"]["AVERAGE"]["STAT"]            = gCommandTree["CALCULATE"]["AVERAGE"]["STATE"]
 
+gCommandTree["CALCULATE"]["CLE"]                        = gCommandTree["CALCULATE"]["CLEAR"]
+gCommandTree["CALCULATE"]["CLEAR"].mCommand             = gCommandTree["CALCULATE"]["CLEAR"]["IMMEDIATE"].mCommand
+gCommandTree["CALCULATE"]["CLEAR"]["IMM"]               = gCommandTree["CALCULATE"]["CLEAR"]["IMMEDIATE"]
+
 gCommandTree["CALCULATE"]["LIM"]                        = gCommandTree["CALCULATE"]["LIMIT"]
 gCommandTree["CALCULATE"]["LIMIT"].mCommand             = gCommandTree["CALCULATE"]["LIMIT"]["STATE"].mCommand
 gCommandTree["CALCULATE"]["LIMIT"].mQuery               = gCommandTree["CALCULATE"]["LIMIT"]["STATE"].mQuery
@@ -3998,6 +4183,14 @@ gCommandTree["CALCULATE"]["LIMIT"]["LOWER"].mCommand    = gCommandTree["CALCULAT
 gCommandTree["CALCULATE"]["LIMIT"]["LOWER"].mQuery      = gCommandTree["CALCULATE"]["LIMIT"]["LOWER"]["DATA"].mQuery
 gCommandTree["CALCULATE"]["LIMIT"]["UPPER"].mCommand    = gCommandTree["CALCULATE"]["LIMIT"]["UPPER"]["DATA"].mCommand
 gCommandTree["CALCULATE"]["LIMIT"]["UPPER"].mQuery      = gCommandTree["CALCULATE"]["LIMIT"]["UPPER"]["DATA"].mQuery
+
+gCommandTree["CALCULATE"]["SCAL"]                       = gCommandTree["CALCULATE"]["SCALE"]
+gCommandTree["CALCULATE"]["SCALE"]["DB"]["REF"]         = gCommandTree["CALCULATE"]["SCALE"]["DB"]["REFERENCE"]
+gCommandTree["CALCULATE"]["SCALE"]["DBM"]["REF"]        = gCommandTree["CALCULATE"]["SCALE"]["DBM"]["REFERENCE"]
+gCommandTree["CALCULATE"]["SCALE"]["FUNC"]              = gCommandTree["CALCULATE"]["SCALE"]["FUNCTION"]
+gCommandTree["CALCULATE"]["SCALE"].mCommand             = gCommandTree["CALCULATE"]["SCALE"]["STATE"].mCommand
+gCommandTree["CALCULATE"]["SCALE"].mQuery               = gCommandTree["CALCULATE"]["SCALE"]["STATE"].mQuery
+gCommandTree["CALCULATE"]["SCALE"]["STAT"]              = gCommandTree["CALCULATE"]["SCALE"]["STATE"]
 
 gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
@@ -4270,6 +4463,7 @@ local lErrors =
 
     -- Standard events:
     [200] = {mState = false, mCode = "200", mStatusBit = 15, mMessage = '200,"Operation complete"' },
+    [263] = {mState = true,  mCode = "263", mStatusBit = 15, mMessage = '+263, Not able to execute while instrument is measuring"' },
 
     -- Operation events:
     [300] = {mState = false, mCode = "300", mStatusBit = 15, mMessage = '300,"Device calibrating"' },
@@ -4750,7 +4944,21 @@ local ChangeMeasFunction = function(measFunction)
     lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
     CheckTerminals()
     ResetLimits()
-    gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.Off
+    gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.OFF
+    if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+    or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
+        gAccessors.mSetDBReference(gInstrumentState.General.DB_Reference.value)
+        gAccessors.mSetDBMReference(gInstrumentState.General.DBM_Reference.value)
+        if(gInstrumentState.General.Scale_State.value == gInstrumentAttributes.OnOff.ON) then
+            gAccessors.mSetMeasureUnit(gInstrumentState.General.Scale_Function.value.DMM_Enum)
+            gInstrumentAttributes.Meas_Functions.DC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+            gInstrumentAttributes.Meas_Functions.AC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+        else
+            gAccessors.mSetMeasureUnit(dmm.UNIT_VOLT)
+            gInstrumentAttributes.Meas_Functions.DC_Voltage.units = "VDC"
+            gInstrumentAttributes.Meas_Functions.AC_Voltage.units = "VAC"
+        end
+    end
     gReadingMemory.clear()
     -- Iterate through measurement attibutes, checking and setting them
     if lInstMeasFunc.value.stateVariables then
@@ -5115,19 +5323,39 @@ gCurrentRoot.mQuery.mExecute = function()
 end
 -- CALCulate:AVERage[:STATe] {OFF|ON}
 gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.ParseParameterBooleanKeywords}
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     if lParameters[1] == true then
         gReadingMemory.statistics.clear()
-        gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.On
+        gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.ON
     else
         UpdateBufferStats()
-        gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.Off
+        gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.OFF
     end
 end
 -- CALCulate:AVERage[:STATe]?
 gCurrentRoot.mQuery.mExecute = function()
     print(gInstrumentState.General.Stats_Enable.value.shorthand)
+end
+
+------------------------------------------------------------------------------
+--
+-- CALCulate:CLEar subsystem
+--
+-----------------------------------------------------------------------------
+
+-- CALCulate:CLEar[:IMMediate]
+gCurrentRoot = gCommandTree["CALCULATE"]["CLEAR"]
+gCurrentRoot.mCommand.mExecute = function()
+    local buffer = gReadingMemory.readingBuffer
+    ResetLimits()
+    gReadingMemory.statistics.clear()
+    if buffer.endindex ~= 0 then
+        gReadingMemory.lastRemoved = buffer.relativetimestamps[buffer.endindex]
+    else
+        gReadingMemory.lastRemoved = -1
+    end
+    StatusModel.SetCondition(operStatus, 9)
 end
 
 ------------------------------------------------------------------------------
@@ -5147,6 +5375,11 @@ gCurrentRoot.mCommand.mParameters = {gParserTable.mParseLimit}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lLimit = lParameters[1]
     if lLimit >= -1e12 and lLimit <= 1e12 then
+        local lState = trigger.model.state()
+        if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+            gErrorQueue.Add(263)
+            return
+        end
         gAccessors.mSetLimitLow(lLimit)
     else
         gErrorQueue.Add(-222)
@@ -5166,6 +5399,10 @@ gCurrentRoot.mCommand.mParameters = {gParserTable.mParseLimit}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lLimit = lParameters[1]
     if lLimit >= -1e12 and lLimit <= 1e12 then
+        if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+            gErrorQueue.Add(263)
+            return
+        end
         gAccessors.mSetLimitHigh(lLimit)
     else
         gErrorQueue.Add(-222)
@@ -5201,6 +5438,124 @@ gCurrentRoot.mQuery.mExecute = function()
     end
 end
 
+------------------------------------------------------------------------------
+--
+-- CALCulate:SCALe subsystem
+--
+-----------------------------------------------------------------------------
+
+-- CALCulate:SCALe:DB:REFerence {<reference>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["CALCULATE"]["SCALE"]["DB"]["REFERENCE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDBReference}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lReference = lParameters[1]
+    if lReference >= gOperatingBoundaries.General.DB_Reference.min and
+    lReference <= gOperatingBoundaries.General.DBM_Reference.max then
+        if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+            gErrorQueue.Add(263)
+            return
+        end
+        local DB_Reference = gInstrumentState.General.DB_Reference
+        DB_Reference.value = lReference
+        if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
+            DB_Reference.setter(DB_Reference.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- CALCulate:SCALe:DB:REFerence? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDBReferenceKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lReference = gInstrumentState.General.DB_Reference.value
+    if lParameters[1] then
+        lReference = lParameters[1]
+    end
+    print(FormatNumber(lReference, true))
+end
+-- CALCulate:SCALe:DBM:REFerence {<reference>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["CALCULATE"]["SCALE"]["DBM"]["REFERENCE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDBMReference}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lReference = lParameters[1]
+    if lReference >= gOperatingBoundaries.General.DBM_Reference.min and
+    lReference <= gOperatingBoundaries.General.DBM_Reference.max then
+        if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+            gErrorQueue.Add(263)
+            return
+        end
+        local DBM_Reference = gInstrumentState.General.DBM_Reference
+        DBM_Reference.value = lReference
+        if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
+            DBM_Reference.setter(DBM_Reference.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- CALCulate:SCALe:DBM:REFerence? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseDBMReferenceKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lReference = gInstrumentState.General.DBM_Reference.value
+    if lParameters[1] then
+        lReference = lParameters[1]
+    end
+    print(FormatNumber(lReference, true))
+end
+-- CALCulate:SCALe:FUNCtion {DB|DBM}
+gCurrentRoot = gCommandTree["CALCULATE"]["SCALE"]["FUNCTION"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseScaleFunction}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        gErrorQueue.Add(263)
+        return
+    end
+    gInstrumentState.General.Scale_Function.value = lParameters[1]
+    if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+    or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage)
+    and (gInstrumentState.General.Scale_State.value == gInstrumentAttributes.OnOff.ON) then
+        gAccessors.mSetMeasureUnit(gInstrumentState.General.Scale_Function.value.DMM_Enum)
+        gInstrumentAttributes.Meas_Functions.DC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+        gInstrumentAttributes.Meas_Functions.AC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+    end
+end
+-- CALCulate:SCALe:FUNCtion?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Scale_Function.value.shorthand)
+end
+-- CALCulate:SCALe[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["CALCULATE"]["SCALE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lScaleState = lParameters[1]
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        gErrorQueue.Add(263)
+        return
+    end
+    if lScaleState then
+        gInstrumentState.General.Scale_State.value = gInstrumentAttributes.OnOff.ON
+        if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
+            gAccessors.mSetMeasureUnit(gInstrumentState.General.Scale_Function.value.DMM_Enum)
+            gInstrumentAttributes.Meas_Functions.DC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+            gInstrumentAttributes.Meas_Functions.AC_Voltage.units = gInstrumentState.General.Scale_Function.value.shorthand
+        end
+    else
+        gInstrumentState.General.Scale_State.value = gInstrumentAttributes.OnOff.OFF
+        if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
+        or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
+            gAccessors.mSetMeasureUnit(dmm.UNIT_VOLT)
+            gInstrumentAttributes.Meas_Functions.DC_Voltage.units = "VDC"
+            gInstrumentAttributes.Meas_Functions.AC_Voltage.units = "VAC"
+        end
+    end
+end
+-- CALCulate:SCALe[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Scale_State.value.shorthand)
+end
 
 ------------------------------------------------------------------------------
 --
