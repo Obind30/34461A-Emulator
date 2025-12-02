@@ -88,7 +88,17 @@ local gReadingMemory =
     bufferSize = 10000,
     readingBuffer = nil,
     lastRemoved = -1,       -- Timestamp of the last buffer reading to be removed
-    units = "VDC"           -- Buffer reading units
+    units = "VDC",          -- Buffer reading units
+    lastAvgRemoved = -1,    -- Timestamp of the last buffer reading with stats cleared
+    statistics = 
+    {
+        average     = 0,
+        count       = 0,
+        max         = 0,
+        min         = 0,
+        ptpeak      = 0,
+        sdeviation  = 0,
+    },
 }
 gReadingMemory.readingBuffer = buffer.make(gReadingMemory.bufferSize, buffer.STYLE_STANDARD)
 gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
@@ -455,6 +465,13 @@ local gInstrumentState =
             value = nil,
             valueParent = nil,
             -- Sample count handled in trigger model instead
+            getter = nil,
+            setter = nil,
+        },
+        Stats_Enable =
+        {
+            value = nil,
+            valueParent = nil,
             getter = nil,
             setter = nil,
         },
@@ -1009,6 +1026,7 @@ local gInstrumentAttributes =
 
 gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
 
+gInstrumentState.General.Stats_Enable.valueParent       = gInstrumentAttributes.OnOff
 gInstrumentState.General.Trigger_Delay_Auto.valueParent = gInstrumentAttributes.Auto_Delay
 gInstrumentState.General.Trigger_Slope.valueParent      = gInstrumentAttributes.Trigger_Slope
 
@@ -1125,6 +1143,7 @@ local gResetFunctionVariables = {
     ResetGeneral = function()
         gInstrumentState.General.Data_Event_Threshold.value = 1
         gInstrumentState.General.Sample_Count.value         = 1
+        gInstrumentState.General.Stats_Enable.value         = gInstrumentAttributes.OnOff.Off
         gInstrumentState.General.Trigger_Count.value        = 1
         gInstrumentState.General.Trigger_Delay_Auto.value   = gInstrumentAttributes.Auto_Delay.ON
         gInstrumentState.General.Trigger_Delay.value        = 1
@@ -1304,17 +1323,35 @@ end
 
 ------------------------------------------------------------------------------
 --
---  gReadingMemory.reset
+--  gReadingMemory.clear
 --
---  Reset the reading buffer to default settings
+--  Clear the reading buffer to default settings
 --
 ------------------------------------------------------------------------------
 
-gReadingMemory.reset = function()
+gReadingMemory.clear = function()
     gReadingMemory.readingBuffer.clear()
     gReadingMemory.lastRemoved = -1
     gReadingMemory.units = gInstrumentState.Measure_Function.value.units
     StatusModel.SetCondition(operStatus, 9)
+end
+
+------------------------------------------------------------------------------
+--
+--  gReadingMemory.statistics.clear
+--
+--  Reset the buffer statistics
+--
+------------------------------------------------------------------------------
+
+gReadingMemory.statistics.clear = function()
+    gReadingMemory.lastAvgRemoved           = gReadingMemory.readingBuffer.relativetimestamps[gReadingMemory.readingBuffer.endindex]
+    gReadingMemory.statistics.average       = 0
+    gReadingMemory.statistics.count         = 0
+    gReadingMemory.statistics.max           = 0
+    gReadingMemory.statistics.min           = 0
+    gReadingMemory.statistics.ptpeak        = 0
+    gReadingMemory.statistics.sdeviation    = 0
 end
 
 local ResetLimits = function()
@@ -1334,7 +1371,7 @@ end
 ResetDefaults = function ()
     ResetScriptVariables()
     ResetDMMSettings()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     gAccessors.mSetLimitLow(0)
     gAccessors.mSetLimitHigh(0)
@@ -3325,6 +3362,50 @@ gCommandTree =
     },
     ["CALCULATE"] =
     {
+        ["AVERAGE"] =
+        {
+            ["ALL"] =
+            {
+                mQuery = {},
+            },
+            ["AVERAGE"] = 
+            {
+                mQuery = {},
+            },
+            ["CLEAR"] =
+            {
+                mCommand = {},
+                ["IMMEDIATE"] =
+                {
+                    mCommand = {},
+                }
+            },
+            ["COUNT"] =
+            {
+                mQuery = {},
+            },
+            ["MAXIMUM"] =
+            {
+                mQuery = {},
+            },
+            ["MINIMUM"] =
+            {
+                mQuery = {},
+            },
+            ["PTPEAK"] =
+            {
+                mQuery = {},
+            },
+            ["SDEVIATION"] =
+            {
+                mQuery = {},
+            },
+            ["STATE"] =
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+        },
         ["LIMIT"] =
         {
             mCommand = {},
@@ -3887,6 +3968,22 @@ gCommandTree["INITIATE"]["IMMEDIATE"].mCommand          = gCommandTree["INITIATE
 gCommandTree["INITIATE"]["IMM"]                         = gCommandTree["INITIATE"]["IMMEDIATE"]
 
 gCommandTree["CALC"]                                    = gCommandTree["CALCULATE"]
+
+gCommandTree["CALCULATE"]["AVER"]                       = gCommandTree["CALCULATE"]["AVERAGE"]
+gCommandTree["CALCULATE"]["AVERAGE"]["AVER"]            = gCommandTree["CALCULATE"]["AVERAGE"]["AVERAGE"]
+gCommandTree["CALCULATE"]["AVERAGE"]["CLE"]             = gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]
+gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"].mCommand  = gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]["IMMEDIATE"].mCommand
+gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"].mQuery    = gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]["IMMEDIATE"].mQuery
+gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]["IMM"]    = gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]["IMMEDIATE"]
+gCommandTree["CALCULATE"]["AVERAGE"]["COUN"]            = gCommandTree["CALCULATE"]["AVERAGE"]["COUNT"]
+gCommandTree["CALCULATE"]["AVERAGE"]["MAX"]             = gCommandTree["CALCULATE"]["AVERAGE"]["MAXIMUM"]
+gCommandTree["CALCULATE"]["AVERAGE"]["MIN"]             = gCommandTree["CALCULATE"]["AVERAGE"]["MINIMUM"]
+gCommandTree["CALCULATE"]["AVERAGE"]["PTP"]             = gCommandTree["CALCULATE"]["AVERAGE"]["PTPEAK"]
+gCommandTree["CALCULATE"]["AVERAGE"]["SDEV"]            = gCommandTree["CALCULATE"]["AVERAGE"]["SDEVIATION"]
+gCommandTree["CALCULATE"]["AVERAGE"].mQuery             = gCommandTree["CALCULATE"]["AVERAGE"]["STATE"].mQuery
+gCommandTree["CALCULATE"]["AVERAGE"].mCommand           = gCommandTree["CALCULATE"]["AVERAGE"]["STATE"].mCommand
+gCommandTree["CALCULATE"]["AVERAGE"]["STAT"]            = gCommandTree["CALCULATE"]["AVERAGE"]["STATE"]
+
 gCommandTree["CALCULATE"]["LIM"]                        = gCommandTree["CALCULATE"]["LIMIT"]
 gCommandTree["CALCULATE"]["LIMIT"].mCommand             = gCommandTree["CALCULATE"]["LIMIT"]["STATE"].mCommand
 gCommandTree["CALCULATE"]["LIMIT"].mQuery               = gCommandTree["CALCULATE"]["LIMIT"]["STATE"].mQuery
@@ -4519,7 +4616,7 @@ end
 -- Measurement Trigger Model
 --
 --============================================================================
-
+local UpdateBufferStats
 gTriggerModel = {
     tmInitialized = false
 }
@@ -4583,6 +4680,7 @@ gTriggerModel.InitiateMeasurements = function()
     if not gTriggerModel.tmInitialized then
         gTriggerModel.InitializeTM()
     end
+    gReadingMemory.clear()
     ResetLimits()
     StatusModel.ClearCondition(operStatus, 9)
     StatusModel.SetCondition(operStatus, 5)
@@ -4611,6 +4709,7 @@ gTriggerModel.EndTriggerModel = function()
     if gLastMeasurement.index == 0 then gLastMeasurement.value = gNan
     else gLastMeasurement.value = gReadingMemory.readingBuffer[gLastMeasurement.index] end
     StatusModel.ClearCondition(operStatus, 5)
+    UpdateBufferStats()
 end
 
 ------------------------------------------------------------------------------
@@ -4651,6 +4750,8 @@ local ChangeMeasFunction = function(measFunction)
     lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
     CheckTerminals()
     ResetLimits()
+    gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.Off
+    gReadingMemory.clear()
     -- Iterate through measurement attibutes, checking and setting them
     if lInstMeasFunc.value.stateVariables then
         for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
@@ -4666,21 +4767,92 @@ local ChangeMeasFunction = function(measFunction)
 end
 
 local FindStartIndex = function()
-    local lStart = gReadingMemory.readingBuffer.startindex
+    local buffer = gReadingMemory.readingBuffer
+    local lStart = buffer.startindex
     if lStart == 0 then
         return 0, 0
     end
     local lRemovedPoints = 0
     -- While timestamp is less than the last removed timestamp
-    while lStart <= gReadingMemory.readingBuffer.n and gReadingMemory.readingBuffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
+    while lStart <= buffer.n and buffer.relativetimestamps[lStart] <= gReadingMemory.lastRemoved do
         lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
         lRemovedPoints = lRemovedPoints+1
         -- If all data points are removed
-        if lStart == gReadingMemory.readingBuffer.startindex then
+        if lStart == buffer.startindex then
             return
         end
     end
-    return lStart, gReadingMemory.readingBuffer.n - lRemovedPoints
+    return lStart, buffer.n - lRemovedPoints
+end
+
+local FindAvgStartIndex = function()
+    local buffer = gReadingMemory.readingBuffer
+    local lStart = buffer.startindex
+    if lStart == 0 then
+        return 0, 0
+    end
+    local lRemovedPoints = 0
+    -- While timestamp is less than the last removed timestamp
+    while lStart <= buffer.n and buffer.relativetimestamps[lStart] <= gReadingMemory.lastAvgRemoved do
+        lStart = math.mod(lStart, gReadingMemory.bufferSize)+1
+        lRemovedPoints = lRemovedPoints+1
+        -- If all data points are removed
+        if lStart == buffer.startindex then
+            return
+        end
+    end
+    return lStart, buffer.n - lRemovedPoints
+end
+
+UpdateBufferStats = function()
+    local lIndex, lNPoints = FindAvgStartIndex()
+    local buffer = gReadingMemory.readingBuffer.readings
+    local stats = gReadingMemory.statistics
+    stats.count = lNPoints
+    if stats.count == 0 then
+        stats.average       = 0
+        stats.max           = 0
+        stats.min           = 0
+        stats.ptpeak        = 0
+        stats.sdeviation    = 0
+        return
+    end
+    local average = 0
+    local max = -1*gInf
+    local min = gInf
+    local sdeviation
+
+    local K = buffer[lIndex]
+    local Ex = 0
+    local Ex2 = 0
+
+    local reading = buffer[lIndex]
+
+    for _=1, lNPoints do
+        reading = buffer[lIndex]
+
+        if reading < min then min = reading end
+        if reading > max then max = reading end
+
+        average = average + reading
+
+        Ex = Ex + (reading - K)
+        Ex2 = Ex2 + math.pow(reading - K, 2)
+
+        lIndex = math.mod(lIndex, gReadingMemory.bufferSize)+1
+    end
+    average = average / lNPoints
+    if lNPoints == 1 then
+        sdeviation = 0
+    else
+        sdeviation = math.sqrt((Ex2 - math.pow(Ex, 2)/lNPoints) / (lNPoints - 1))
+    end
+
+    stats.average = average
+    stats.max = max
+    stats.min = min
+    stats.ptpeak = math.abs(max-min)
+    stats.sdeviation = sdeviation
 end
 
 --============================================================================
@@ -4780,7 +4952,6 @@ end
 -- INITiate[:IMMediate]
 gCurrentRoot = gCommandTree["INITIATE"]
 gCurrentRoot.mCommand.mExecute = function()
-    gReadingMemory.reset()
     gTriggerModel.InitiateMeasurements()
 end
 -- R? [<max_readings>]
@@ -4802,7 +4973,6 @@ end
 -- READ?
 gCurrentRoot = gCommandTree["READ"]
 gCurrentRoot.mQuery.mExecute = function()
-    gReadingMemory.reset()
     gTriggerModel.InitiateMeasurements()
     waitcomplete() -- May need to change to only wait for trigger model
     print(FormatBuffer(gReadingMemory.readingBuffer.startindex, gReadingMemory.readingBuffer.n, true))
@@ -4831,15 +5001,134 @@ end
 -----------------------------------------------------------------------------
 
 -- CALCulate:AVERage:ALL?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["ALL"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s,%s,%s,%s",
+            FormatNumber(stats.average, true),
+            FormatNumber(stats.sdeviation, true),
+            FormatNumber(stats.min, true),
+            FormatNumber(stats.max, true)
+        )
+    )
+end
 -- CALCulate:AVERage:AVERage?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["AVERAGE"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(stats.average, true)
+        )
+    )
+end
 -- CALCulate:AVERage:CLEar[:IMMediate]
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]
+gCurrentRoot.mCommand.mExecute = function()
+    gReadingMemory.statistics.clear()
+end
 -- CALCulate:AVERage:COUNt?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["COUNT"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(stats.count, true)
+        )
+    )
+end
 -- CALCulate:AVERage:MAXimum?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["MAXIMUM"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(stats.max, true)
+        )
+    )
+end
 -- CALCulate:AVERage:MINimum?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["MINIMUM"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(stats.min, true)
+        )
+    )
+end
 -- CALCulate:AVERage:PTPeak?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["PTPEAK"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(stats.ptpeak, true)
+        )
+    )
+end
 -- CALCulate:AVERage:SDEViation?
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]["SDEVIATION"]
+gCurrentRoot.mQuery.mExecute = function()
+    local lState = trigger.model.state()
+    local stats = gReadingMemory.statistics
+    if lState == trigger.STATE_RUNNING or lState == trigger.STATE_WAITING then
+        UpdateBufferStats()
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(stats.sdeviation, true)
+        )
+    )
+end
 -- CALCulate:AVERage[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["CALCULATE"]["AVERAGE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.ParseParameterBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    if lParameters[1] == true then
+        gReadingMemory.statistics.clear()
+        gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.On
+    else
+        UpdateBufferStats()
+        gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.Off
+    end
+end
 -- CALCulate:AVERage[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Stats_Enable.value.shorthand)
+end
 
 ------------------------------------------------------------------------------
 --
@@ -4971,7 +5260,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetCapacitance()
     gSetFunctionAttributes.SetCapacitance()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -4994,7 +5283,7 @@ gCurrentRoot.mCommand.mExecute = function()
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     gResetFunctionVariables.ResetGeneral()
     gSetFunctionAttributes.SetGeneral()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
 end
 -- CONFigure:CURRent:AC [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
@@ -5034,7 +5323,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetACCurrent()
     gSetFunctionAttributes.SetACCurrent()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5086,7 +5375,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetDCCurrent()
     gSetFunctionAttributes.SetDCCurrent()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5109,7 +5398,7 @@ gCurrentRoot.mCommand.mExecute = function()
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     gResetFunctionVariables.ResetGeneral()
     gSetFunctionAttributes.SetGeneral()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
 end
 -- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
@@ -5149,7 +5438,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetFResistance()
     gSetFunctionAttributes.SetFResistance()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5201,7 +5490,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetResistance()
     gSetFunctionAttributes.SetResistance()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5253,7 +5542,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetACVoltage()
     gSetFunctionAttributes.SetACVoltage()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5305,7 +5594,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5357,7 +5646,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -5508,7 +5797,7 @@ end
 gCurrentRoot = gCommandTree["SAMPLE"]["COUNT"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseSampleCount}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] >= gOperatingBoundaries.General.Sample_Count.min
     and lParameters[1] <= gOperatingBoundaries.General.Sample_Count.max then
         gInstrumentState.General.Sample_Count.value = lParameters[1]
@@ -5542,7 +5831,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNullState = lParameters[1]
     -- Update null state variable
     if lNullState == true then
@@ -5568,7 +5857,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseCapNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local relLevel = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
     local lNullVal  = gInstrumentState.Capacitance.Null_Value
@@ -5600,7 +5889,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] == true then
         gInstrumentState.Capacitance.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
@@ -5620,7 +5909,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseCapRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.Capacitance.Range_Auto
     local lInstRange = gInstrumentState.Capacitance.Range
@@ -5660,7 +5949,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutorange = lParameters[1]
     local lInstAutorange = gInstrumentState.Capacitance.Range_Auto
     if lAutorange == "ONCE" then
@@ -5707,7 +5996,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["AC"]["BANDWIDTH"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACCBandwidth}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lDetectorBandwidth = lParameters[1]
     if lDetectorBandwidth > 300000
     or lDetectorBandwidth < gOperatingBoundaries.AC_Current.Bandwidth.min then
@@ -5743,7 +6032,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["AC"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNullState = lParameters[1]
     -- Update null state variable
     if lNullState == true then
@@ -5769,7 +6058,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["AC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACCNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     CheckTerminals()
     local relLevel = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
@@ -5803,7 +6092,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["AC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] == true then
         gInstrumentState.AC_Current.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
@@ -5823,7 +6112,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["AC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACCRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     CheckTerminals()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.AC_Current.Range_Auto
@@ -5865,7 +6154,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["AC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutorange = lParameters[1]
     local lInstAutorange = gInstrumentState.AC_Current.Range_Auto
     if lAutorange == "ONCE" then
@@ -5919,7 +6208,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["DC"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     -- Update null state variable
     local lNullState = lParameters[1]
     if lNullState == true then
@@ -5945,7 +6234,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["DC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCCNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     CheckTerminals()
     local relLevel  = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
@@ -5979,7 +6268,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["DC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] == true then
         gInstrumentState.DC_Current.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
@@ -5999,7 +6288,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["DC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCCRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     CheckTerminals()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.DC_Current.Range_Auto
@@ -6041,7 +6330,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["DC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutorange = lParameters[1]
     local lInstAutorange = gInstrumentState.DC_Current.Range_Auto
     if lAutorange == "ONCE" then
@@ -6081,7 +6370,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["NPLC"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNPLC = lParameters[1]
     if lNPLC <= gOperatingBoundaries.General.Nplc.max 
     and lNPLC >= gOperatingBoundaries.General.Nplc.min then
@@ -6118,7 +6407,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["CURRENT"]["ZERO"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutoZero = lParameters[1]
     local lInstZeroAuto = gInstrumentState.DC_Current.Zero_Auto
     local lInstFunction = gInstrumentState.Measure_Function
@@ -6156,7 +6445,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFResRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.FResistance.Range_Auto
     local lInstRange = gInstrumentState.FResistance.Range
@@ -6260,7 +6549,7 @@ gCurrentRoot.mCommand.mParameters =
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lFunction = lParameters[1]
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     -- Set instrument to function configuration
     ChangeMeasFunction(lFunction)
 end
@@ -6281,7 +6570,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NPLC"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNPLC = lParameters[1]
     if lNPLC <= gOperatingBoundaries.General.Nplc.max 
     and lNPLC >= gOperatingBoundaries.General.Nplc.min then
@@ -6312,7 +6601,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNullState = lParameters[1]
     -- Update null state variable
     if lNullState == true then
@@ -6339,7 +6628,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseResNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local relLevel = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
     local lNullVal  = gInstrumentState.Resistance.Null_Value
@@ -6372,7 +6661,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] == true then
         gInstrumentState.Resistance.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
@@ -6393,7 +6682,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseResRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.Resistance.Range_Auto
     local lInstRange = gInstrumentState.Resistance.Range
@@ -6433,7 +6722,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutorange = lParameters[1]
     local lInstAutorange = gInstrumentState.Resistance.Range_Auto
     if lAutorange == "ONCE" then
@@ -6475,7 +6764,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["RESISTANCE"]["ZERO"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutoZero = lParameters[1]
     local lInstZeroAuto = gInstrumentState.Resistance.Zero_Auto
     local lInstFunction = gInstrumentState.Measure_Function
@@ -6513,7 +6802,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["BANDWIDTH"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVBandwidth}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lDetectorBandwidth = lParameters[1]
     if lDetectorBandwidth > 300000
     or lDetectorBandwidth < gOperatingBoundaries.AC_Voltage.Bandwidth.min then
@@ -6549,7 +6838,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNullState = lParameters[1]
     -- Update null state variable
     if lNullState == true then
@@ -6575,7 +6864,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local relLevel = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
     local lNullVal  = gInstrumentState.AC_Voltage.Null_Value
@@ -6607,7 +6896,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] == true then
         gInstrumentState.AC_Voltage.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
@@ -6627,7 +6916,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseACVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.AC_Voltage.Range_Auto
     local lInstRange = gInstrumentState.AC_Voltage.Range
@@ -6667,7 +6956,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["AC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutorange = lParameters[1]
     local lInstAutorange = gInstrumentState.AC_Voltage.Range_Auto
     if lAutorange == "ONCE" then
@@ -6714,7 +7003,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["STATE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     -- Update null state variable
     local lNullState = lParameters[1]
     if lNullState == true then
@@ -6741,7 +7030,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVNullValue}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local relLevel  = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
     local lNullVal  = gInstrumentState.DC_Voltage.Null_Value
@@ -6774,7 +7063,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["VALUE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     if lParameters[1] == true then
         gInstrumentState.DC_Voltage.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
     elseif lParameters[1] == false then
@@ -6794,7 +7083,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDCVoltageRange}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lMeasureRange = lParameters[1]
     local lInstAutorange = gInstrumentState.DC_Voltage.Range_Auto
     local lInstRange = gInstrumentState.DC_Voltage.Range
@@ -6835,7 +7124,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["RANGE"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutorange = lParameters[1]
     local lInstAutorange = gInstrumentState.DC_Voltage.Range_Auto
     if lAutorange == "ONCE" then
@@ -6876,7 +7165,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["NPLC"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lNPLC = lParameters[1]
     if lNPLC <= gOperatingBoundaries.General.Nplc.max 
     and lNPLC >= gOperatingBoundaries.General.Nplc.min then
@@ -6907,7 +7196,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["VOLTAGE"]["ZERO"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lAutoZero = lParameters[1]
     local lInstZeroAuto = gInstrumentState.DC_Voltage.Zero_Auto
     local lInstFunction = gInstrumentState.Measure_Function
@@ -7010,7 +7299,7 @@ end
 gCurrentRoot = gCommandTree["TRIGGER"]["COUNT"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTriggerCount}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lTriggerCount = lParameters[1]
     if lTriggerCount <= gOperatingBoundaries.General.Trigger_Count.max
     and lTriggerCount >= gOperatingBoundaries.General.Trigger_Count.min then
@@ -7048,7 +7337,7 @@ end
 gCurrentRoot = gCommandTree["TRIGGER"]["DELAY"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTriggerDelay}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lDelay = lParameters[1]
     if lDelay <= gOperatingBoundaries.General.Trigger_Delay.max
     and lDelay >= gOperatingBoundaries.General.Trigger_Delay.min then
@@ -7073,7 +7362,7 @@ end
 gCurrentRoot = gCommandTree["TRIGGER"]["DELAY"]["AUTO"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lDelayAuto = lParameters[1]
     if lDelayAuto == true then
         gInstrumentState.General.Trigger_Delay_Auto.value = gInstrumentAttributes.Auto_Delay.ON
@@ -7108,7 +7397,7 @@ gCurrentRoot.mCommand.mParameters =
     }
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lSlope = lParameters[1]
     if lSlope == "POS" then
         gInstrumentState.General.Trigger_Slope.value = gInstrumentAttributes.Trigger_Slope.Positive
@@ -7140,7 +7429,7 @@ gCurrentRoot.mCommand.mParameters =
     }
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gReadingMemory.reset()
+    gReadingMemory.clear()
     local lSource = lParameters[1]
     gInstrumentState.General.Trigger_Source.value = lSource
     gTriggerModel.tmInitialized = false
