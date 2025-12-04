@@ -254,6 +254,13 @@ gAccessors.mSetDBReference          = makesetter(gMeasure, "dbreference")
 gAccessors.mSetDBMReference         = makesetter(gMeasure, "dbmreference")
 gAccessors.mSetMeasureUnit          = makesetter(gMeasure, "unit")
 
+gAccessors.mGetTransducer           = makegetter(gMeasure, "transducer")
+gAccessors.mGetTranRef              = makegetter(gMeasure, "rtdzero")
+
+gAccessors.mSetTransducer           = makesetter(gMeasure, "transducer")
+gAccessors.mSetTranRef              = makesetter(gMeasure, "rtdzero")
+gAccessors.mSetTwoRTD               = makesetter(gMeasure, "twortd")
+gAccessors.mSetFourRTD              = makesetter(gMeasure, "fourrtd")
 
 --============================================================================
 --
@@ -380,7 +387,8 @@ local gOperatingBoundaries =
             min = -1000
         },
     },
-    Resistance = {
+    Resistance =
+    {
         Range =
         {
             -- Values fully compatible, default same as 34461
@@ -396,7 +404,8 @@ local gOperatingBoundaries =
             min = -1e8
         },
     },
-    FResistance = {
+    FResistance =
+    {
         Range =
         {
             -- Values fully compatible, default same as 34461
@@ -411,6 +420,23 @@ local gOperatingBoundaries =
             def = 0,
             min = -1e8
         },
+    },
+    Temperature =
+    {
+        Null =
+        {
+            -- Max/min limited by 6500
+            max = 3310,
+            def = 0,
+            min = -3310
+        },
+        TranRef =
+        {
+            -- Excedes 34461A
+            max = 10000,
+            def = 100,
+            min = 0,
+        }
     },
     General =
     {
@@ -904,6 +930,72 @@ local gInstrumentState =
             setter = gAccessors.mSetMeasureNPLC,
         },
     },
+    Temperature =
+    {
+        NPLC =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureNPLC,
+            setter = gAccessors.mSetMeasureNPLC,
+        },
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+        Transducer_Reference = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetTranRef,
+            setter = gAccessors.mSetTranRef,
+        },
+        FTransducer_Reference = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetTranRef,
+            setter = gAccessors.mSetTranRef,
+        },
+        Transducer_Type =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetTransducer,
+            setter = gAccessors.mSetTransducer,
+        },
+        Zero_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetAutozeroEnable,
+            setter = gAccessors.mSetAutozeroEnable,
+        },
+        Unit =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetMeasureUnit,
+            setter = gAccessors.mSetMeasureUnit,
+        },
+    },
 }
 -- These attributes are shared between 2W and 4W resistance
 gInstrumentState.FResistance.Null_State         = gInstrumentState.Resistance.Null_State
@@ -952,7 +1044,7 @@ local gInstrumentAttributes =
         {
             shorthand = "TEMP",
             DMM_Enum = dmm.FUNC_TEMPERATURE,
-            stateVariables = nil,
+            stateVariables = gInstrumentState.Temperature,
             overload_bit = 5,
         },
         Resistance = 
@@ -1071,6 +1163,42 @@ local gInstrumentAttributes =
             shorthand = "DBM"
         },
     },
+    Temp_Unit =
+    {
+        C =
+        {
+            DMM_Enum = dmm.UNIT_CELSIUS,
+            shorthand = "C"
+        },
+        F =
+        {
+            DMM_Enum = dmm.UNIT_FAHRENHEIT,
+            shorthand = "F"
+        },
+        K =
+        {
+            DMM_Enum = dmm.UNIT_KELVIN,
+            shorthand = "K"
+        },
+    },
+    Transducer_Type =
+    {
+        FRTD =
+        {
+            DMM_Enum = dmm.TRANS_FOURRTD,
+            shorthand = "FRTD"
+        },
+        RTD =
+        {
+            DMM_Enum = dmm.TRANS_TWORTD,
+            shorthand = "RTD"
+        },
+        Thermistor =
+        {
+            DMM_Enum = dmm.TRANS_THERMISTOR,
+            shorthand = "THER"
+        },
+    },
     Trigger_Slope =
     {
         Positive =
@@ -1122,6 +1250,12 @@ gInstrumentState.Resistance.Null_State.valueParent      = gInstrumentAttributes.
 gInstrumentState.Resistance.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
 gInstrumentState.Resistance.Range_Auto.valueParent      = gInstrumentAttributes.OnOff
 gInstrumentState.Resistance.Zero_Auto.valueParent       = gInstrumentAttributes.OnOff
+
+gInstrumentState.Temperature.Null_State.valueParent         = gInstrumentAttributes.OnOff
+gInstrumentState.Temperature.Null_Value_Auto.valueParent    = gInstrumentAttributes.OnOff
+gInstrumentState.Temperature.Transducer_Type.valueParent    = gInstrumentAttributes.Transducer_Type
+gInstrumentState.Temperature.Zero_Auto.valueParent          = gInstrumentAttributes.OnOff
+gInstrumentState.Temperature.Unit.valueParent               = gInstrumentAttributes.Temp_Unit
 
 --============================================================================
 --
@@ -1285,6 +1419,17 @@ local gResetFunctionVariables = {
         gInstrumentState.FResistance.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
         gInstrumentState.FResistance.NPLC.value              = 10
     end,
+    ResetTemperature = function()
+        gInstrumentState.Temperature.NPLC.value                 = 10
+        gInstrumentState.Temperature.Null_State.value           = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Temperature.Null_Value.value           = 0
+        gInstrumentState.Temperature.Null_Value_Auto.value      = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Temperature.Transducer_Reference.value = 100
+        gInstrumentState.Temperature.FTransducer_Reference.value = 100
+        gInstrumentState.Temperature.Transducer_Type.value      = gInstrumentAttributes.Transducer_Type.FRTD
+        gInstrumentState.Temperature.Zero_Auto.value            = gInstrumentAttributes.OnOff.ON
+        gInstrumentState.Temperature.Unit.value                 = gInstrumentAttributes.Temp_Unit.C
+    end,
 }
 
 ------------------------------------------------------------------------------
@@ -1305,6 +1450,7 @@ local ResetScriptVariables = function()
         gResetFunctionVariables.ResetACVoltage()
         gResetFunctionVariables.ResetResistance()
         gResetFunctionVariables.ResetFResistance()
+        gResetFunctionVariables.ResetTemperature()
 end
 
 ------------------------------------------------------------------------------
@@ -1387,6 +1533,21 @@ local gSetFunctionAttributes =
         gAccessors.mSetMeasureAutorange(gInstrumentState.FResistance.Range_Auto.value.DMM_Enum)
         gAccessors.mSetMeasureNPLC(gInstrumentState.FResistance.NPLC.value)
     end,
+    SetTemperature = function()
+        gAccessors.mSetMeasureNPLC(gInstrumentState.Temperature.NPLC.value)
+        gAccessors.mSetRelEnable(gInstrumentState.Temperature.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.Temperature.Null_Value.value)
+        gAccessors.mSetTransducer(gInstrumentState.Temperature.Transducer_Type.value.DMM_Enum)
+        if gInstrumentState.Temperature.Transducer_Type.value == gInstrumentAttributes.Transducer_Type.RTD then
+            gAccessors.mSetTwoRTD(dmm.RTD_USER)
+            gAccessors.mSetTranRef(gInstrumentState.Temperature.Transducer_Reference.value) 
+        elseif gInstrumentState.Temperature.Transducer_Type.value == gInstrumentAttributes.Transducer_Type.FRTD then
+            gAccessors.mSetFourRTD(dmm.RTD_USER)
+            gAccessors.mSetTranRef(gInstrumentState.Temperature.FTransducer_Reference.value) 
+        end
+        gAccessors.mSetAutozeroEnable(gInstrumentState.Temperature.Zero_Auto.value.DMM_Enum)
+        gAccessors.mSetMeasureUnit(gInstrumentState.Temperature.Unit.value.DMM_Enum)
+    end
 }
 
 ------------------------------------------------------------------------------
@@ -2652,6 +2813,74 @@ gParserTable.mParseScaleFunction =
         ["DBM"] = gInstrumentAttributes.Scale_Unit.DBM,
     }
 }
+gParserTable.mParseTempNullValueKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Temperature.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Temperature.Null.min,
+        ["MAX"]         = gOperatingBoundaries.Temperature.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Temperature.Null.max,
+        ["DEF"]         = gOperatingBoundaries.Temperature.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Temperature.Null.def,
+    }
+}
+gParserTable.mParseTempNullValue =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseTempNullValueKeywords,
+    }
+}
+gParserTable.mParseTempReferenceKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Temperature.TranRef.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Temperature.TranRef.min,
+        ["MAX"]         = gOperatingBoundaries.Temperature.TranRef.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Temperature.TranRef.max,
+        ["DEF"]         = gOperatingBoundaries.Temperature.TranRef.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Temperature.TranRef.def,
+    }
+}
+gParserTable.mParseTempReference =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseTempReferenceKeywords,
+    }
+}
+gParserTable.mParseTranType =
+{
+    mParse = gParserTable.ParseParameterName,
+    mNames =
+    {
+        ["FRTD"]        = gInstrumentAttributes.Transducer_Type.FRTD,
+        ["RTD"]         = gInstrumentAttributes.Transducer_Type.RTD,
+        ["THERMISTOR"]  = gInstrumentAttributes.Transducer_Type.Thermistor,
+        ["THER"]        = gInstrumentAttributes.Transducer_Type.Thermistor,
+    }
+}
+gParserTable.mParseTempUnit =
+{
+    mParse = gParserTable.ParseParameterName,
+    mNames =
+    {
+        ["C"] = gInstrumentAttributes.Temp_Unit.C,
+        ["F"] = gInstrumentAttributes.Temp_Unit.F,
+        ["K"] = gInstrumentAttributes.Temp_Unit.K,
+    }
+}
+
 ------------------------------------------------------------------------------
 --
 --  Parse4882
@@ -3971,6 +4200,76 @@ gCommandTree =
                 }
             },
         },
+        ["TEMPERATURE"] =
+        {
+            ["NPLC"] =
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+            ["NULL"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["STATE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["VALUE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                    ["AUTO"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                    },
+                },
+            },
+            ["TRANSDUCER"] =
+            {
+                ["FRTD"] =
+                {
+                    ["RESISTANCE"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                        ["REFERENCE"] =
+                        {
+                            mQuery = {},
+                            mCommand = {},
+                        }
+                    },
+                },
+                ["RTD"] =
+                {
+                    ["RESISTANCE"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                        ["REFERENCE"] =
+                        {
+                            mQuery = {},
+                            mCommand = {},
+                        }
+                    },
+                },
+                ["TYPE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+            ["ZERO"] =
+            {
+                ["AUTO"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+        },
         ["VOLTAGE"] =
         {
             ["NPLC"] =
@@ -4136,6 +4435,14 @@ gCommandTree =
             mCommand = {},
         },
     },
+    ["UNIT"] =
+    {
+        ["TEMPERATURE"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        }
+    },
 }
 
 -- ADD ABBREVIATION ALIASES HERE
@@ -4273,6 +4580,23 @@ gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mCommand   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mQuery
 gCommandTree["SENSE"]["FRESISTANCE"]["RANG"]            = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
 
+gCommandTree["TEMPERATURE"]                             = gCommandTree["SENSE"]["TEMPERATURE"]
+gCommandTree["TEMP"]                                    = gCommandTree["SENSE"]["TEMPERATURE"]
+gCommandTree["SENSE"]["TEMP"]                           = gCommandTree["SENSE"]["TEMPERATURE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["STAT"]    = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["VAL"]     = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["NULL"].mCommand   = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["TEMPERATURE"]["NULL"].mQuery     = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["STATE"].mQuery
+gCommandTree["SENSE"]["TEMPERATURE"]["TRAN"]            = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RES"]                   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"].mCommand   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"].mCommand
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"].mQuery     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"].mQuery
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REF"]     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RES"]                   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"].mCommand   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"].mCommand
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"].mQuery     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"].mQuery
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REF"]     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"]
+
 gCommandTree["VOLTAGE"]                                 = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["VOLT"]                                    = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["SENSE"]["VOLT"]                           = gCommandTree["SENSE"]["VOLTAGE"]
@@ -4317,6 +4641,8 @@ gCommandTree["TRIGGER"]["DEL"]                          = gCommandTree["TRIGGER"
 gCommandTree["TRIGGER"]["SLOP"]                         = gCommandTree["TRIGGER"]["SLOPE"]
 gCommandTree["TRIGGER"]["SOUR"]                         = gCommandTree["TRIGGER"]["SOURCE"]
 
+gCommandTree["UNIT"]["TEMP"]                            = gCommandTree["UNIT"]["TEMPERATURE"]
+
 -- DEV function
 if gDEVMODE then
     gPrintCMDTree = function(printString, tree)
@@ -4344,9 +4670,9 @@ if gDEVMODE then
         end
         file.close(fptr)
     end
-    --gPrintCMDTree("", gCommandTree)
-    --print("DONE")
-    --exit()
+    gPrintCMDTree("", gCommandTree)
+    print("DONE")
+    exit()
 end
 
 --============================================================================
@@ -4938,7 +5264,7 @@ local FormatBlockLength = function(lString)
     return string.format("#%s%s%s", lNumLength, lBlockLength, lString)
 end
 
-local ChangeMeasFunction = function(measFunction)
+local ChangeMeasFunction = function(measFunction, setters)
     local lInstMeasFunc = gInstrumentState.Measure_Function
     lInstMeasFunc.value = measFunction
     lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
@@ -4961,17 +5287,18 @@ local ChangeMeasFunction = function(measFunction)
     end
     gReadingMemory.clear()
     -- Iterate through measurement attibutes, checking and setting them
-    if lInstMeasFunc.value.stateVariables then
-        for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
-            if lValue.setter then
-                if type(lValue.value) == "number" then
-                    lValue.setter(lValue.value)
-                else
-                    lValue.setter(lValue.value.DMM_Enum)
-                end
-            end
-        end
-    end
+    setters()
+    --if lInstMeasFunc.value.stateVariables then
+    --    for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
+    --        if lValue.setter then
+    --            if type(lValue.value) == "number" then
+    --                lValue.setter(lValue.value)
+    --            else
+    --                lValue.setter(lValue.value.DMM_Enum)
+    --            end
+    --        end
+    --    end
+    --end
 end
 
 local FindStartIndex = function()
@@ -6851,62 +7178,63 @@ gCurrentRoot.mCommand.mParameters =
         mParse = gParserTable.ParseParameterNameString,
         mNames =
         {
-            ["CAPACITANCE"]     = gInstrumentAttributes.Meas_Functions.Capacitance,
-            ["CAP"]             = gInstrumentAttributes.Meas_Functions.Capacitance,
+            ["CAPACITANCE"]     = {gInstrumentAttributes.Meas_Functions.Capacitance, gSetFunctionAttributes.SetCapacitance},
+            ["CAP"]             = {gInstrumentAttributes.Meas_Functions.Capacitance, gSetFunctionAttributes.SetCapacitance},
             
-            ["CONTINUITY"]      = gInstrumentAttributes.Meas_Functions.Continuity,
-            ["CONT"]            = gInstrumentAttributes.Meas_Functions.Continuity,
+            ["CONTINUITY"]      = {gInstrumentAttributes.Meas_Functions.Continuity, nil},
+            ["CONT"]            = {gInstrumentAttributes.Meas_Functions.Continuity, nil},
             
-            ["CURRENT:AC"]      = gInstrumentAttributes.Meas_Functions.AC_Current,
-            ["CURR:AC"]         = gInstrumentAttributes.Meas_Functions.AC_Current,
+            ["CURRENT:AC"]      = {gInstrumentAttributes.Meas_Functions.AC_Current, gSetFunctionAttributes.SetACCurrent},
+            ["CURR:AC"]         = {gInstrumentAttributes.Meas_Functions.AC_Current, gSetFunctionAttributes.SetACCurrent},
             
-            ["CURRENT:DC"]      = gInstrumentAttributes.Meas_Functions.DC_Current,
-            ["CURR:DC"]         = gInstrumentAttributes.Meas_Functions.DC_Current,
-            ["CURRENT"]         = gInstrumentAttributes.Meas_Functions.DC_Current,
-            ["CURR"]            = gInstrumentAttributes.Meas_Functions.DC_Current,
+            ["CURRENT:DC"]      = {gInstrumentAttributes.Meas_Functions.DC_Current, gSetFunctionAttributes.SetDCCurrent},
+            ["CURR:DC"]         = {gInstrumentAttributes.Meas_Functions.DC_Current, gSetFunctionAttributes.SetDCCurrent},
+            ["CURRENT"]         = {gInstrumentAttributes.Meas_Functions.DC_Current, gSetFunctionAttributes.SetDCCurrent},
+            ["CURR"]            = {gInstrumentAttributes.Meas_Functions.DC_Current, gSetFunctionAttributes.SetDCCurrent},
             
-            ["DIODE"]           = gInstrumentAttributes.Meas_Functions.Diode,
-            ["DIOD"]            = gInstrumentAttributes.Meas_Functions.Diode,
+            ["DIODE"]           = {gInstrumentAttributes.Meas_Functions.Diode, nil},
+            ["DIOD"]            = {gInstrumentAttributes.Meas_Functions.Diode, nil},
 
-            ["FREQUENCY"]       = gInstrumentAttributes.Meas_Functions.Frequency,
-            ["FREQ"]            = gInstrumentAttributes.Meas_Functions.Frequency,
+            ["FREQUENCY"]       = {gInstrumentAttributes.Meas_Functions.Frequency, gSetFunctionAttributes.SetFrequency},
+            ["FREQ"]            = {gInstrumentAttributes.Meas_Functions.Frequency, gSetFunctionAttributes.SetFrequency},
 
-            ["FRESISTANCE"]     = gInstrumentAttributes.Meas_Functions.FResistance,
-            ["FRES"]            = gInstrumentAttributes.Meas_Functions.FResistance,
+            ["FRESISTANCE"]     = {gInstrumentAttributes.Meas_Functions.FResistance, gSetFunctionAttributes.SetFResistance},
+            ["FRES"]            = {gInstrumentAttributes.Meas_Functions.FResistance, gSetFunctionAttributes.SetFResistance},
 
-            ["PERIOD"]          = gInstrumentAttributes.Meas_Functions.Period,
-            ["PER"]             = gInstrumentAttributes.Meas_Functions.Period,
+            ["PERIOD"]          = {gInstrumentAttributes.Meas_Functions.Period, gSetFunctionAttributes.SetPeriod},
+            ["PER"]             = {gInstrumentAttributes.Meas_Functions.Period, gSetFunctionAttributes.SetPeriod},
 
-            ["RESISTANCE"]      = gInstrumentAttributes.Meas_Functions.Resistance,
-            ["RES"]             = gInstrumentAttributes.Meas_Functions.Resistance,
+            ["RESISTANCE"]      = {gInstrumentAttributes.Meas_Functions.Resistance, gSetFunctionAttributes.SetResistance},
+            ["RES"]             = {gInstrumentAttributes.Meas_Functions.Resistance, gSetFunctionAttributes.SetResistance},
 
-            ["TEMPERATURE"]     = gInstrumentAttributes.Meas_Functions.Temperature,
-            ["TEMP"]            = gInstrumentAttributes.Meas_Functions.Temperature,
+            ["TEMPERATURE"]     = {gInstrumentAttributes.Meas_Functions.Temperature, gSetFunctionAttributes.SetTemperature},
+            ["TEMP"]            = {gInstrumentAttributes.Meas_Functions.Temperature, gSetFunctionAttributes.SetTemperature},
 
-            ["VOLTAGE:AC"]      = gInstrumentAttributes.Meas_Functions.AC_Voltage,
-            ["VOLT:AC"]         = gInstrumentAttributes.Meas_Functions.AC_Voltage,
+            ["VOLTAGE:AC"]      = {gInstrumentAttributes.Meas_Functions.AC_Voltage, gSetFunctionAttributes.SetACVoltage},
+            ["VOLT:AC"]         = {gInstrumentAttributes.Meas_Functions.AC_Voltage, gSetFunctionAttributes.SetACVoltage},
 
-            ["VOLTAGE:DC"]      = gInstrumentAttributes.Meas_Functions.DC_Voltage,
-            ["VOLT:DC"]         = gInstrumentAttributes.Meas_Functions.DC_Voltage,
-            ["VOLTAGE"]         = gInstrumentAttributes.Meas_Functions.DC_Voltage,
-            ["VOLT"]            = gInstrumentAttributes.Meas_Functions.DC_Voltage,
+            ["VOLTAGE:DC"]      = {gInstrumentAttributes.Meas_Functions.DC_Voltage, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLT:DC"]         = {gInstrumentAttributes.Meas_Functions.DC_Voltage, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLTAGE"]         = {gInstrumentAttributes.Meas_Functions.DC_Voltage, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLT"]            = {gInstrumentAttributes.Meas_Functions.DC_Voltage, gSetFunctionAttributes.SetDCVoltage},
 
-            ["VOLTAGE:DC:RATIO"]    = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLT:DC:RATIO"]       = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLTAGE:RATIO"]       = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLT:RATIO"]          = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLTAGE:DC:RAT"]      = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLT:DC:RAT"]         = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLTAGE:RAT"]         = gInstrumentAttributes.Meas_Functions.Ratio,
-            ["VOLT:RAT"]            = gInstrumentAttributes.Meas_Functions.Ratio,
+            ["VOLTAGE:DC:RATIO"]    = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLT:DC:RATIO"]       = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLTAGE:RATIO"]       = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLT:RATIO"]          = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLTAGE:DC:RAT"]      = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLT:DC:RAT"]         = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLTAGE:RAT"]         = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
+            ["VOLT:RAT"]            = {gInstrumentAttributes.Meas_Functions.Ratio, gSetFunctionAttributes.SetDCVoltage},
         }
     }
 }
 gCurrentRoot.mCommand.mExecute = function(lParameters)
-    local lFunction = lParameters[1]
+    local lFunction = lParameters[1][1]
+    local lSetters = lParameters[1][2]
     gReadingMemory.clear()
     -- Set instrument to function configuration
-    ChangeMeasFunction(lFunction)
+    ChangeMeasFunction(lFunction, lSetters)
 end
 -- [SENSe:]FUNCtion[:ON]?
 gCurrentRoot.mQuery.mExecute = function()
@@ -7143,6 +7471,223 @@ gCurrentRoot.mQuery.mExecute = function()
         string.format(
             "%s",
             gInstrumentState.DC_Voltage.Zero_Auto.value.shorthand
+        )
+    )
+end
+
+------------------------------------------------------------------------------
+--
+-- [SENSe:]TEMPerature subsystem
+--
+-----------------------------------------------------------------------------
+
+-- [SENSe:]TEMPerature:NPLC {<PLCs>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["NPLC"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseNPLC}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local lNPLC = lParameters[1]
+    if lNPLC <= gOperatingBoundaries.General.Nplc.max 
+    and lNPLC >= gOperatingBoundaries.General.Nplc.min then
+        gInstrumentState.Temperature.NPLC.value = lNPLC
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature then
+            gInstrumentState.Temperature.NPLC.setter(lNPLC)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]TEMPerature:NPLC? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseNPLCKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lNPLC = lParameters[1]
+    if lParameters[1] == nil then
+        lNPLC = gInstrumentState.Temperature.NPLC.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lNPLC, true)
+        )
+    )
+end
+-- [SENSe:]TEMPerature:NULL[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local lNullState = lParameters[1]
+    -- Update null state variable
+    if lNullState == true then
+        gInstrumentState.Temperature.Null_State.value = gInstrumentAttributes.OnOff.ON
+    elseif lNullState == false then
+        gInstrumentState.Temperature.Null_State.value = gInstrumentAttributes.OnOff.OFF
+    end
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature then
+        gInstrumentState.Temperature.Null_State.setter(gInstrumentState.Temperature.Null_State.value.shorthand)
+    end
+end
+-- [SENSe:]TEMPerature:NULL[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Temperature.Null_State.value.shorthand
+        )
+    )
+end
+-- [SENSe:]TEMPerature:NULL:VALue {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["VALUE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempNullValue}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local relLevel = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.Temperature.Null_Value
+    if relLevel <= gOperatingBoundaries.Temperature.Null.max and
+       relLevel >= gOperatingBoundaries.Temperature.Null.min then
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.Temperature then
+            lNullVal.setter(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]TEMPerature:NULL:VALue? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseTempNullValueKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintNullValue = lParameters[1]
+    if lPrintNullValue == nil then
+        lPrintNullValue = gInstrumentState.Temperature.Null_Value.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintNullValue, true)
+        )
+    )
+end
+-- [SENSe:]TEMPerature:NULL:VALue:AUTO {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["NULL"]["VALUE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    if lParameters[1] == true then
+        gInstrumentState.Temperature.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
+    elseif lParameters[1] == false then
+        gInstrumentState.Temperature.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
+    end
+end
+-- [SENSe:]TEMPerature:NULL:VALue:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Temperature.Null_Value_Auto.value.shorthand
+        )
+    )
+end
+-- [SENSe:]TEMPerature:TRANsducer:FRTD:RESistance[:REFerence] {<reference>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempReference}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lReference = lParameters[1]
+    if lReference >= gOperatingBoundaries.Temperature.TranRef.min and
+    lReference <= gOperatingBoundaries.Temperature.TranRef.max then
+        gInstrumentState.Temperature.FTransducer_Reference.value = lReference
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature and 
+        gInstrumentState.Temperature.Transducer_Type.value == gInstrumentAttributes.Transducer_Type.FRTD then
+            gInstrumentState.Temperature.FTransducer_Reference.setter(gInstrumentState.Temperature.FTransducer_Reference.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]TEMPerature:TRANsducer:FRTD:RESistance[:REFerence]? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseTempReferenceKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lReference = gInstrumentState.Temperature.FTransducer_Reference.value
+    if lParameters[1] then
+        lReference = lParameters[1]
+    end
+    print(FormatNumber(lReference, true))
+end
+-- [SENSe:]TEMPerature:TRANsducer:RTD:RESistance[:REFerence] {<reference>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempReference}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lReference = lParameters[1]
+    if lReference >= gOperatingBoundaries.Temperature.TranRef.min and
+    lReference <= gOperatingBoundaries.Temperature.TranRef.max then
+        gInstrumentState.Temperature.Transducer_Reference.value = lReference
+        if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature and 
+        gInstrumentState.Temperature.Transducer_Type.value == gInstrumentAttributes.Transducer_Type.RTD then
+            gInstrumentState.Temperature.Transducer_Reference.setter(gInstrumentState.Temperature.Transducer_Reference.value)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]TEMPerature:TRANsducer:RTD:RESistance[:REFerence]? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseTempReferenceKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lReference = gInstrumentState.Temperature.Transducer_Reference.value
+    if lParameters[1] then
+        lReference = lParameters[1]
+    end
+    print(FormatNumber(lReference, true))
+end
+-- [SENSe:]TEMPerature:TRANsducer:TYPE {FRTD|RTD|THERmistor}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["TYPE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTranType}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lType = lParameters[1]
+    gInstrumentState.Temperature.Transducer_Type.value = lType
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature then
+        gInstrumentState.Temperature.Transducer_Type.setter(gInstrumentState.Temperature.Transducer_Type.value.DMM_Enum)
+        if gInstrumentState.Temperature.Transducer_Type.value == gInstrumentAttributes.Transducer_Type.RTD then
+            gAccessors.mSetTwoRTD(dmm.RTD_USER)
+            gAccessors.mSetTranRef(gInstrumentState.Temperature.Transducer_Reference.value)
+        elseif gInstrumentState.Temperature.Transducer_Type.value == gInstrumentAttributes.Transducer_Type.FRTD then
+            gAccessors.mSetFourRTD(dmm.RTD_USER)
+            gAccessors.mSetTranRef(gInstrumentState.Temperature.FTransducer_Reference.value)
+        end
+    end
+end
+-- [SENSe:]TEMPerature:TRANsducer:TYPE?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.Temperature.Transducer_Type.value.shorthand)
+end
+-- [SENSe:]TEMPerature:ZERO:AUTO {OFF|ON|ONCE}
+gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["ZERO"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAutoOnceKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local lAutoZero = lParameters[1]
+    local lInstZeroAuto = gInstrumentState.Temperature.Zero_Auto
+    local lInstFunction = gInstrumentState.Measure_Function
+    if lAutoZero == true then
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.ON
+    elseif lAutoZero == false then
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.OFF
+    elseif lAutoZero == "ONCE" then
+        if lInstFunction.value == gInstrumentAttributes.Meas_Functions.Temperature then
+            gMeasure.autozero.once()
+        end
+        lInstZeroAuto.value = gInstrumentAttributes.OnOff.OFF
+    end
+    if lInstFunction.value == gInstrumentAttributes.Meas_Functions.Temperature then
+        lInstZeroAuto.setter(lInstZeroAuto.value.DMM_Enum)
+    end
+end
+-- [SENSe:]TEMPerature:ZERO:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Temperature.Zero_Auto.value.shorthand
         )
     )
 end
@@ -7792,6 +8337,25 @@ end
 --TRIGger:SOURce?
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     print(gInstrumentState.General.Trigger_Source.value)
+end
+
+------------------------------------------------------------------------------
+--
+-- UNIT subsystem
+--
+-----------------------------------------------------------------------------
+
+gCurrentRoot = gCommandTree["UNIT"]["TEMPERATURE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempUnit}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lUnit = lParameters[1]
+    gInstrumentState.Temperature.Unit.value = lUnit
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature then
+        gInstrumentState.Temperature.Unit.setter(gInstrumentState.Temperature.Unit.value.DMM_Enum)
+    end
+end
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.Temperature.Unit.value.shorthand)
 end
 
 -- INITIALIZE HERE
