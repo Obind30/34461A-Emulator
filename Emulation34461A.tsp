@@ -262,6 +262,9 @@ gAccessors.mSetTranRef              = makesetter(gMeasure, "rtdzero")
 gAccessors.mSetTwoRTD               = makesetter(gMeasure, "twortd")
 gAccessors.mSetFourRTD              = makesetter(gMeasure, "fourrtd")
 
+gAccessors.mGetLimitAudible         = makegetter(gLimit, "audible")
+gAccessors.mSetLimitAudible         = makesetter(gLimit, "audible")
+
 --============================================================================
 --
 -- Model specific tables
@@ -520,6 +523,21 @@ local gInstrumentState =
 
     General = 
     {
+        Beeper_State =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetLimitAudible,
+            setter = gAccessors.mSetLimitAudible,
+        },
+        Display_String =
+        {
+            value = nil
+        },
+        IDN_String =
+        {
+            value = nil
+        },
         Data_Event_Threshold =
         {
             value = nil,
@@ -1074,6 +1092,19 @@ gInstrumentState.FResistance.NPLC               = gInstrumentState.Resistance.NP
 
 local gInstrumentAttributes =
 {
+    Limit_Beeper =
+    {
+        ON =
+        {
+            DMM_Enum = dmm.AUDIBLE_FAIL,
+            shorthand = 1,
+        },
+        OFF =
+        {
+            DMM_Enum = dmm.AUDIBLE_NONE,
+            shorthand = 0,
+        },
+    },
     Meas_Functions =
     {
         DC_Voltage = 
@@ -1284,6 +1315,7 @@ local gInstrumentAttributes =
 
 gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
 
+gInstrumentState.General.Beeper_State.valueParent       = gInstrumentAttributes.Limit_Beeper
 gInstrumentState.General.Scale_Function.valueParent     = gInstrumentAttributes.Scale_Unit
 gInstrumentState.General.Scale_State.valueParent        = gInstrumentAttributes.OnOff
 gInstrumentState.General.Stats_Enable.valueParent       = gInstrumentAttributes.OnOff
@@ -1414,6 +1446,9 @@ local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
     ResetGeneral = function()
         gTriggerModel.tmInitialized = false
+        gInstrumentState.General.Display_String.value       = ""
+        gInstrumentState.General.IDN_String.value           = string.format("Keysight Technologies,34461A,%s,%s", localnode.serialno, localnode.version)
+        gInstrumentState.General.Beeper_State.value         = gInstrumentAttributes.Limit_Beeper.ON
         gInstrumentState.General.DB_Reference.value         = 1
         gInstrumentState.General.DBM_Reference.value        = 75
         gInstrumentState.General.Scale_Function.value       = gInstrumentAttributes.Scale_Unit.DB
@@ -1551,6 +1586,7 @@ end
 local gSetFunctionAttributes = 
 {
     SetGeneral = function()
+        gAccessors.mSetLimitAudible(gInstrumentState.General.Beeper_State.value.DMM_Enum)
         if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
         or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
             gAccessors.mSetDBReference(gInstrumentState.General.DB_Reference.value)
@@ -2376,7 +2412,7 @@ gParserTable.mParseNRf          = {mParse = gParserTable.ParseParameterNRf}
 gParserTable.mParseNRfOptional  = {mParse = gParserTable.ParseParameterNRf, mOptional = true}
 gParserTable.mParseBooleanKeywords = {mParse = gParserTable.ParseParameterBoolean}
 gParserTable.mParseInteger      = {mParse = gParserTable.ParseParameterIntegerNRf}
-
+gParserTable.mParseString       = {mParse = gParserTable.ParseParameterString}
 gParserTable.mParseDCVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
@@ -4883,6 +4919,66 @@ gCommandTree =
             },
         }
     },
+    ["SYSTEM"] =
+    {
+        ["BEEPER"] =
+        {
+            mCommand = {},
+            ["IMMEDIATE"] =
+            {
+                mCommand = {},
+            },
+            ["STATE"] =
+            {
+                mCommand = {},
+                mQuery = {},
+            },
+        },
+        ["DATE"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        },
+        ["ERROR"] =
+        {
+            mQuery = {},
+            ["NEXT"] =
+            {
+                mQuery = {},
+            },
+        },
+        ["HELP"] =
+        {
+            mQuery = {}
+        },
+        ["IDENTIFY"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        },
+        ["LABEL"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        },
+        ["LFREQUENCY"] =
+        {
+            mQuery = {},
+        },
+        ["PRESET"] = 
+        {
+            mCommand = {},
+        },
+        ["TIME"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        },
+        ["VERSION"] =
+        {
+            mQuery = {}
+        },
+    },
     ["TRIGGER"] =
     {
         ["COUNT"] =
@@ -5144,6 +5240,19 @@ gCommandTree["STATUS"]["QUESTIONABLE"]["ENAB"]          = gCommandTree["STATUS"]
 gCommandTree["STATUS"]["QUESTIONABLE"]["EVEN"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"]
 gCommandTree["STATUS"]["QUESTIONABLE"].mQuery           = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"].mQuery
 
+gCommandTree["SYST"]                                    = gCommandTree["SYSTEM"]
+gCommandTree["SYSTEM"]["BEEP"]                          = gCommandTree["SYSTEM"]["BEEPER"]
+gCommandTree["SYSTEM"]["BEEPER"].mCommand               = gCommandTree["SYSTEM"]["BEEPER"]["IMMEDIATE"].mCommand
+gCommandTree["SYSTEM"]["BEEPER"]["IMM"]                 = gCommandTree["SYSTEM"]["BEEPER"]["IMMEDIATE"]
+gCommandTree["SYSTEM"]["BEEPER"]["STAT"]                = gCommandTree["SYSTEM"]["BEEPER"]["STATE"]
+gCommandTree["SYSTEM"]["ERR"]                           = gCommandTree["SYSTEM"]["ERROR"]
+gCommandTree["SYSTEM"]["ERROR"].mQuery                  = gCommandTree["SYSTEM"]["ERROR"]["NEXT"].mQuery
+gCommandTree["SYSTEM"]["IDEN"]                          = gCommandTree["SYSTEM"]["IDENTIFY"]
+gCommandTree["SYSTEM"]["LAB"]                           = gCommandTree["SYSTEM"]["LABEL"]
+gCommandTree["SYSTEM"]["LFR"]                           = gCommandTree["SYSTEM"]["LFREQUENCY"]
+gCommandTree["SYSTEM"]["PRES"]                          = gCommandTree["SYSTEM"]["PRESET"]
+gCommandTree["SYSTEM"]["VERS"]                          = gCommandTree["SYSTEM"]["VERSION"]
+
 gCommandTree["ROUT"]                                    = gCommandTree["ROUTE"]
 gCommandTree["ROUTE"]["TERM"]                           = gCommandTree["ROUTE"]["TERMINALS"]
 
@@ -5401,7 +5510,11 @@ gErrorQueue.Add = function (lErrorNumber)
         elseif lCount == 64 then
             table.insert(gErrorQueue, lErrors[-350])
         end    
-        -- Display Error Message on Front Panel and Beep
+        -- Beep on error
+        if gInstrumentState.General.Beeper_State.value == gInstrumentAttributes.Limit_Beeper.ON then
+            beeper.beep(0.15, 340)
+        end
+        -- Display Error Message on Front Panel
         if gDisplayErrors then
             if gErrorQueue.lDisplay then
                 display.delete(gErrorQueue.lDisplay)
@@ -5410,7 +5523,6 @@ gErrorQueue.Add = function (lErrorNumber)
                 display.BUTTONS_OK,
                 lError.mMessage
             )
-            beeper.beep(0.15, 340)
         end
         if gErrorReadback then
             print(lError.mMessage)
@@ -5426,9 +5538,9 @@ gErrorQueue.ReadError = function ()
     local lCount = table.getn(gErrorQueue)
     
     if lCount == 0 then
-        Print('0,"No error"')
+        print('0,"No error"')
     else
-        Print(gErrorQueue[1].mMessage)
+        print(gErrorQueue[1].mMessage)
         table.remove(gErrorQueue, 1)
         if lCount == 1 then
             --StatusModel.ClearSummary(3)
@@ -5920,14 +6032,7 @@ end
 -- *IDN?
 gCurrentRoot = gCommandTree["*IDN"]
 gCurrentRoot.mQuery.mExecute = function()
-    print(
-        string.format(
-            --"KEITHLEY INSTRUMENTS,MODEL DMM6500,%s,%s",
-            "Keysight Technologies,34461A,%s,%s\n",
-            localnode.serialno,
-            localnode.version
-        )
-    )
+    print(gInstrumentState.General.IDN_String.value)
 end
 -- *CLS
 gCurrentRoot = gCommandTree["*CLS"]
@@ -8813,6 +8918,161 @@ gCurrentRoot = gCommandTree["STATUS"]["QUESTIONABLE"]["ENABLE"]
 gCurrentRoot.mQuery.mExecute = function()
     print(quesStatus.mEvent)
     StatusModel.ClearEvent(quesStatus)
+end
+
+------------------------------------------------------------------------------
+--
+-- SYSTem subsystem
+--
+-----------------------------------------------------------------------------
+
+-- SYSTem:BEEPer[:IMMediate]
+gCurrentRoot = gCommandTree["SYSTEM"]["BEEPER"]["IMMEDIATE"]
+gCurrentRoot.mCommand.mExecute = function()
+    beeper.beep(0.15, 340)
+end
+-- SYSTem:BEEPer:STATe {OFF|ON}
+gCurrentRoot = gCommandTree["SYSTEM"]["BEEPER"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lState = lParameters[1]
+    if lState == true then
+        gInstrumentState.General.Beeper_State.value = gInstrumentAttributes.Limit_Beeper.ON
+    elseif lState == false then
+        gInstrumentState.General.Beeper_State.value = gInstrumentAttributes.Limit_Beeper.OFF
+    end
+    gInstrumentState.General.Beeper_State.setter(gInstrumentState.General.Beeper_State.value.DMM_Enum)
+end
+-- SYSTem:BEEPer:STATe?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Beeper_State.value.shorthand)
+end
+-- SYSTem:DATE <year>, <month>, <day>
+gCurrentRoot = gCommandTree["SYSTEM"]["DATE"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    gParserTable.mParseInteger,
+    gParserTable.mParseInteger,
+    gParserTable.mParseInteger
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lYear     = lParameters[1]
+    local lMonth    = lParameters[2]
+    local lDay      = lParameters[3]
+    if lYear >= 2000 and lYear <= 2099
+    and lMonth >= 1 and lMonth <= 12
+    and lDay >= 1 and lDay <= 31 then
+        local hour = tonumber(os.date('%H', localnode.gettime()))
+        local minute = tonumber(os.date('%M', localnode.gettime()))
+        local second = tonumber(os.date('%S', localnode.gettime()))
+        localnode.settime(lYear, lMonth, lDay, hour, minute, second)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- SYSTem:DATE?
+gCurrentRoot.mQuery.mExecute = function()
+    print(os.date('+%Y,+%m,+%d', localnode.gettime()))
+end
+-- SYSTem:ERRor[:NEXT]?
+gCurrentRoot = gCommandTree["SYSTEM"]["ERROR"]["NEXT"]
+gCurrentRoot.mQuery.mExecute = function()
+    gErrorQueue.ReadError()
+end
+-- SYSTem:HELP?
+print("PLACEHOLDER")
+-- SYSTem:IDENtify {DEFault|AT34461A|HP34401A}*
+gCurrentRoot = gCommandTree["SYSTEM"]["IDENTIFY"]
+gCurrentRoot.mCommand.mParameters =
+{
+    mParse = gParserTable.ParseParameterName,
+    mNames =
+    {
+        ["DEF"]         = "Keysight Technologies,34461A,",
+        ["DEFAULT"]     = "Keysight Technologies,34461A,",
+        ["AT34461A"]    = "Agilent Technologies,34461A",
+        ["HP34401A"]    = "HEWLETT-PACKARD,34401A",
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gInstrumentState.General.IDN_String.value =
+    string.format(
+        "%s,%s,%s",
+        lParameters[1],
+        localnode.serialno,
+        localnode.version
+    )
+end
+-- SYSTem:IDENtify?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.IDN_String.value)
+end
+-- SYSTem:LABel "<string>"
+gCurrentRoot = gCommandTree["SYSTEM"]["LABEL"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseString}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local displayString = lParameters[1]
+    gInstrumentState.General.Display_String.value = displayString
+    if displayString == "" then
+        display.clear()
+        display.changescreen(display.SCREEN_HOME)
+    else
+        display.clear()
+        display.changescreen(display.SCREEN_USER_SWIPE)
+        display.settext(display.TEXT1, displayString)
+    end
+end
+-- SYSTem:LABel?
+gCurrentRoot.mQuery.mExecute = function ()
+    print(gInstrumentState.General.Display_String.value)
+end
+-- SYSTem:LFRequency?
+gCurrentRoot = gCommandTree["SYSTEM"]["LFREQUENCY"]
+gCurrentRoot.mQuery.mExecute = function ()
+    print(
+        string.format(
+            "+%d",
+            gPLC
+        )
+    )
+end
+-- SYSTem:PRESet
+gCurrentRoot = gCommandTree["SYSTEM"]["PRESET"]
+gCurrentRoot.mCommand.mExecute = function()
+    gCommandTree["*RST"].mCommand.mExecute()
+    gCommandTree["CALCULATE"]["AVERAGE"]["STATE"].mCommand.mExecute({true})
+end
+-- SYSTem:TIME <hour>, <minute>, <second>
+gCurrentRoot = gCommandTree["SYSTEM"]["TIME"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    gParserTable.mParseInteger,
+    gParserTable.mParseInteger,
+    gParserTable.mParseInteger
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lHour     = lParameters[1]
+    local lMinute   = lParameters[2]
+    local lSecond   = lParameters[3]
+    if lHour >= 0 and lHour <= 23
+    and lMinute >= 0 and lMinute <= 59
+    and lSecond >= 0 and lSecond <= 59 then
+        local year  = tonumber(os.date('%Y', localnode.gettime()))
+        local month = tonumber(os.date('%m', localnode.gettime()))
+        local day   = tonumber(os.date('%d', localnode.gettime()))
+        localnode.settime(year, month, day, lHour, lMinute, lSecond)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- SYSTem:TIME?
+gCurrentRoot.mQuery.mExecute = function()
+    print(os.date('%H,%M,%S.000', localnode.gettime()))
+end
+-- SYSTem:VERSion?
+gCurrentRoot = gCommandTree["SYSTEM"]["VERSION"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(1994.0)
 end
 
 ------------------------------------------------------------------------------
