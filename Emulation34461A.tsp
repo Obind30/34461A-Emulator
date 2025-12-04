@@ -404,6 +404,16 @@ local gOperatingBoundaries =
             min = -1e8
         },
     },
+    Frequency = 
+    {
+        Null =
+        {
+            -- Max/min limited by 6500
+            max = 1e6,
+            def = 0,
+            min = -1e6
+        },
+    },
     FResistance =
     {
         Range =
@@ -419,6 +429,16 @@ local gOperatingBoundaries =
             max = 1e8,
             def = 0,
             min = -1e8
+        },
+    },
+    Period =
+    {
+        Null =
+        {
+            -- Max/min limited by 6500
+            max = 1,
+            def = 0,
+            min = -1
         },
     },
     Temperature =
@@ -885,6 +905,30 @@ local gInstrumentState =
             setter = gAccessors.mSetAutozeroEnable,
         },
     },
+    Frequency =
+    {
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
+        },
+    },
     FResistance =
     {
         Null_State = 
@@ -928,6 +972,30 @@ local gInstrumentState =
             valueParent = nil,
             getter = gAccessors.mGetMeasureNPLC,
             setter = gAccessors.mSetMeasureNPLC,
+        },
+    },
+    Period =
+    {
+        Null_State = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelEnable,
+            setter = gAccessors.mSetRelEnable,
+        },
+        Null_Value = 
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetRelLevel,
+            setter = gAccessors.mSetRelLevel,
+        },
+        Null_Value_Auto =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
         },
     },
     Temperature =
@@ -1257,6 +1325,12 @@ gInstrumentState.Temperature.Transducer_Type.valueParent    = gInstrumentAttribu
 gInstrumentState.Temperature.Zero_Auto.valueParent          = gInstrumentAttributes.OnOff
 gInstrumentState.Temperature.Unit.valueParent               = gInstrumentAttributes.Temp_Unit
 
+gInstrumentState.Frequency.Null_State.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.Frequency.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+
+gInstrumentState.Period.Null_State.valueParent      = gInstrumentAttributes.OnOff
+gInstrumentState.Period.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOff
+
 --============================================================================
 --
 -- Reset Functions
@@ -1410,6 +1484,11 @@ local gResetFunctionVariables = {
         gInstrumentState.Resistance.NPLC.value              = 10
         gInstrumentState.Resistance.Zero_Auto.value         = gInstrumentAttributes.OnOff.ON
     end,
+    ResetFrequency = function()
+        gInstrumentState.Frequency.Null_State.value         = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Frequency.Null_Value.value         = 0
+        gInstrumentState.Frequency.Null_Value_Auto.value    = gInstrumentAttributes.OnOff.OFF
+    end,
     ResetFResistance = function()
         -- FRESISTANCE VARIABLES
         gInstrumentState.FResistance.Null_State.value        = gInstrumentAttributes.OnOff.OFF
@@ -1418,6 +1497,11 @@ local gResetFunctionVariables = {
         gInstrumentState.FResistance.Range.value             = 1000
         gInstrumentState.FResistance.Range_Auto.value        = gInstrumentAttributes.OnOff.ON
         gInstrumentState.FResistance.NPLC.value              = 10
+    end,
+    ResetPeriod = function()
+        gInstrumentState.Period.Null_State.value        = gInstrumentAttributes.OnOff.OFF
+        gInstrumentState.Period.Null_Value.value        = 0
+        gInstrumentState.Period.Null_Value_Auto.value   = gInstrumentAttributes.OnOff.OFF
     end,
     ResetTemperature = function()
         gInstrumentState.Temperature.NPLC.value                 = 10
@@ -1451,6 +1535,8 @@ local ResetScriptVariables = function()
         gResetFunctionVariables.ResetResistance()
         gResetFunctionVariables.ResetFResistance()
         gResetFunctionVariables.ResetTemperature()
+        gResetFunctionVariables.ResetFrequency()
+        gResetFunctionVariables.ResetPeriod()
 end
 
 ------------------------------------------------------------------------------
@@ -1526,12 +1612,20 @@ local gSetFunctionAttributes =
         gAccessors.mSetMeasureNPLC(gInstrumentState.Resistance.NPLC.value)
         gAccessors.mSetAutozeroEnable(gInstrumentState.Resistance.Zero_Auto.value.DMM_Enum)
     end,
+    SetFrequency = function()
+        gAccessors.mSetRelEnable(gInstrumentState.Frequency.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.Frequency.Null_Value.value)
+    end,
     SetFResistance = function()
         gAccessors.mSetRelEnable(gInstrumentState.FResistance.Null_State.value.DMM_Enum)
         gAccessors.mSetRelLevel(gInstrumentState.FResistance.Null_Value.value)
         gAccessors.mSetMeasureRange(gInstrumentState.FResistance.Range.value)
         gAccessors.mSetMeasureAutorange(gInstrumentState.FResistance.Range_Auto.value.DMM_Enum)
         gAccessors.mSetMeasureNPLC(gInstrumentState.FResistance.NPLC.value)
+    end,
+    SetPeriod = function()
+        gAccessors.mSetRelEnable(gInstrumentState.Period.Null_State.value.DMM_Enum)
+        gAccessors.mSetRelLevel(gInstrumentState.Period.Null_Value.value)
     end,
     SetTemperature = function()
         gAccessors.mSetMeasureNPLC(gInstrumentState.Temperature.NPLC.value)
@@ -2875,9 +2969,57 @@ gParserTable.mParseTempUnit =
     mParse = gParserTable.ParseParameterName,
     mNames =
     {
-        ["C"] = gInstrumentAttributes.Temp_Unit.C,
-        ["F"] = gInstrumentAttributes.Temp_Unit.F,
-        ["K"] = gInstrumentAttributes.Temp_Unit.K,
+        ["C"]   = gInstrumentAttributes.Temp_Unit.C,
+        ["CEL"] = gInstrumentAttributes.Temp_Unit.C,
+        ["F"]   = gInstrumentAttributes.Temp_Unit.F,
+        ["FAR"] = gInstrumentAttributes.Temp_Unit.F,
+        ["K"]   = gInstrumentAttributes.Temp_Unit.K,
+    }
+}
+gParserTable.mParsePeriodNullValueKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Period.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Period.Null.min,
+        ["MAX"]         = gOperatingBoundaries.Period.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Period.Null.max,
+        ["DEF"]         = gOperatingBoundaries.Period.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Period.Null.def,
+    }
+}
+gParserTable.mParsePeriodNullValue =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParsePeriodNullValueKeywords,
+    }
+}
+gParserTable.mParseFrequencyNullValueKeywords =
+{
+    mParse = gParserTable.ParseParameterName,
+    mOptional = true,
+    mNames =
+    {
+        ["MIN"]         = gOperatingBoundaries.Frequency.Null.min,
+        ["MINIMUM"]     = gOperatingBoundaries.Frequency.Null.min,
+        ["MAX"]         = gOperatingBoundaries.Frequency.Null.max,
+        ["MAXIMUM"]     = gOperatingBoundaries.Frequency.Null.max,
+        ["DEF"]         = gOperatingBoundaries.Frequency.Null.def,
+        ["DEFAULT"]     = gOperatingBoundaries.Frequency.Null.def,
+    }
+}
+gParserTable.mParseFrequencyNullValue =
+{
+    mParse = gParserTable.ParseParameterChoice,
+    mData =
+    {
+        gParserTable.mParseNRf,
+        gParserTable.mParseFrequencyNullValueKeywords,
     }
 }
 
@@ -4108,6 +4250,29 @@ gCommandTree =
                 },
             },
         },
+        ["FREQUENCY"] =
+        {
+            ["NULL"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["STATE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["VALUE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                    ["AUTO"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                    },
+                },
+            },
+        },
         ["FRESISTANCE"] =
         {
             ["NPLC"] = 
@@ -4152,6 +4317,29 @@ gCommandTree =
             {
                 mCommand = {},
                 mQuery = {},
+            },
+        },
+        ["PERIOD"] =
+        {
+            ["NULL"] =
+            {
+                mQuery = {},
+                mCommand = {},
+                ["STATE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["VALUE"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                    ["AUTO"] =
+                    {
+                        mQuery = {},
+                        mCommand = {},
+                    },
+                },
             },
         },
         ["RESISTANCE"] =
@@ -4303,7 +4491,7 @@ gCommandTree =
                             mCommand = {},
                         },
                     },
-                },  
+                },
                 ["RANGE"] =
                 {
                     mQuery = {},
@@ -4580,6 +4768,22 @@ gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mCommand   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mQuery
 gCommandTree["SENSE"]["FRESISTANCE"]["RANG"]            = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
 
+gCommandTree["FREQUENCY"]                               = gCommandTree["SENSE"]["FREQUENCY"]
+gCommandTree["FREQ"]                                    = gCommandTree["SENSE"]["FREQUENCY"]
+gCommandTree["SENSE"]["FREQ"]                           = gCommandTree["SENSE"]["FREQUENCY"]
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STAT"]      = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VAL"]       = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"].mCommand     = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"].mQuery       = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"].mQuery
+
+gCommandTree["PERIOD"]                                  = gCommandTree["SENSE"]["PERIOD"]
+gCommandTree["PER"]                                     = gCommandTree["SENSE"]["PERIOD"]
+gCommandTree["SENSE"]["PER"]                            = gCommandTree["SENSE"]["PERIOD"]
+gCommandTree["SENSE"]["PERIOD"]["NULL"]["STAT"]         = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["PERIOD"]["NULL"]["VAL"]          = gCommandTree["SENSE"]["PERIOD"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["PERIOD"]["NULL"].mCommand        = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["PERIOD"]["NULL"].mQuery          = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"].mQuery
+
 gCommandTree["TEMPERATURE"]                             = gCommandTree["SENSE"]["TEMPERATURE"]
 gCommandTree["TEMP"]                                    = gCommandTree["SENSE"]["TEMPERATURE"]
 gCommandTree["SENSE"]["TEMP"]                           = gCommandTree["SENSE"]["TEMPERATURE"]
@@ -4670,9 +4874,9 @@ if gDEVMODE then
         end
         file.close(fptr)
     end
-    gPrintCMDTree("", gCommandTree)
-    print("DONE")
-    exit()
+    --gPrintCMDTree("", gCommandTree)
+    --print("DONE")
+    --exit()
 end
 
 --============================================================================
@@ -7119,6 +7323,91 @@ end
 
 ------------------------------------------------------------------------------
 --
+-- [SENSe:]FREQuency subsystem
+--
+-----------------------------------------------------------------------------
+
+-- [SENSe:]FREQuency:NULL[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local lNullState = lParameters[1]
+    -- Update null state variable
+    if lNullState == true then
+        gInstrumentState.Frequency.Null_State.value = gInstrumentAttributes.OnOff.ON
+    elseif lNullState == false then
+        gInstrumentState.Frequency.Null_State.value = gInstrumentAttributes.OnOff.OFF
+    end
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Frequency then
+        gInstrumentState.Frequency.Null_State.setter(gInstrumentState.Frequency.Null_State.value.shorthand)
+    end
+end
+-- [SENSe:]FREQuency:NULL[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Frequency.Null_State.value.shorthand
+        )
+    )
+end
+-- [SENSe:]FREQuency:NULL:VALue {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VALUE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFrequencyNullValue}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local relLevel = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.Frequency.Null_Value
+    if relLevel <= gOperatingBoundaries.Frequency.Null.max and
+       relLevel >= gOperatingBoundaries.Frequency.Null.min then
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.Frequency then
+            lNullVal.setter(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]FREQuency:NULL:VALue? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParseFrequencyNullValueKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintNullValue = lParameters[1]
+    if lPrintNullValue == nil then
+        lPrintNullValue = gInstrumentState.Frequency.Null_Value.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintNullValue, true)
+        )
+    )
+end
+-- [SENSe:]FREQuency:NULL:VALue:AUTO {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VALUE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    if lParameters[1] == true then
+        gInstrumentState.Frequency.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
+    elseif lParameters[1] == false then
+        gInstrumentState.Frequency.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
+    end
+end
+-- [SENSe:]FREQuency:NULL:VALue:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Frequency.Null_Value_Auto.value.shorthand
+        )
+    )
+end
+
+------------------------------------------------------------------------------
+--
 -- [SENSe:]FRESistance subsystem
 --
 -----------------------------------------------------------------------------
@@ -7240,6 +7529,91 @@ end
 gCurrentRoot.mQuery.mExecute = function()
     print(
         gInstrumentState.Measure_Function.value.shorthand
+    )
+end
+
+------------------------------------------------------------------------------
+--
+-- [SENSe:]PERiod subsystem
+--
+-----------------------------------------------------------------------------
+
+-- [SENSe:]PERiod:NULL[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local lNullState = lParameters[1]
+    -- Update null state variable
+    if lNullState == true then
+        gInstrumentState.Period.Null_State.value = gInstrumentAttributes.OnOff.ON
+    elseif lNullState == false then
+        gInstrumentState.Period.Null_State.value = gInstrumentAttributes.OnOff.OFF
+    end
+    -- Set null state if active function
+    if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Period then
+        gInstrumentState.Period.Null_State.setter(gInstrumentState.Period.Null_State.value.shorthand)
+    end
+end
+-- [SENSe:]PERiod:NULL[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Period.Null_State.value.shorthand
+        )
+    )
+end
+-- [SENSe:]PERiod:NULL:VALue {<value>|MIN|MAX|DEF}
+gCurrentRoot = gCommandTree["SENSE"]["PERIOD"]["NULL"]["VALUE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParsePeriodNullValue}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    local relLevel = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    local lNullVal  = gInstrumentState.Period.Null_Value
+    if relLevel <= gOperatingBoundaries.Period.Null.max and
+       relLevel >= gOperatingBoundaries.Period.Null.min then
+        lNullVal.value = relLevel
+        if lMeasFunc.value == gInstrumentAttributes.Meas_Functions.Period then
+            lNullVal.setter(relLevel)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- [SENSe:]PERiod:NULL:VALue? [{MIN|MAX|DEF}]
+gCurrentRoot.mQuery.mParameters = {gParserTable.mParsePeriodNullValueKeywords}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPrintNullValue = lParameters[1]
+    if lPrintNullValue == nil then
+        lPrintNullValue = gInstrumentState.Period.Null_Value.value
+    end
+    print(
+        string.format(
+            "%s",
+            FormatNumber(lPrintNullValue, true)
+        )
+    )
+end
+-- [SENSe:]PERiod:NULL:VALue:AUTO {OFF|ON}
+gCurrentRoot = gCommandTree["SENSE"]["PERIOD"]["NULL"]["VALUE"]["AUTO"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
+    if lParameters[1] == true then
+        gInstrumentState.Period.Null_Value_Auto.value = gInstrumentAttributes.OnOff.ON
+    elseif lParameters[1] == false then
+        gInstrumentState.Period.Null_Value_Auto.value = gInstrumentAttributes.OnOff.OFF
+    end
+end
+-- [SENSe:]PERiod:NULL:VALue:AUTO?
+gCurrentRoot.mQuery.mExecute = function()
+    print(
+        string.format(
+            "%s",
+            gInstrumentState.Period.Null_Value_Auto.value.shorthand
+        )
     )
 end
 
