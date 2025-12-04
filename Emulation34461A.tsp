@@ -4031,6 +4031,14 @@ gCommandTree =
         {
             mCommand = {},
         },
+        ["FREQUENCY"] =
+        {
+            mCommand = {},
+        },
+        ["PERIOD"] =
+        {
+            mCommand = {},
+        },
         ["RATIO"] =
         {
             mCommand = {},
@@ -4051,6 +4059,10 @@ gCommandTree =
             mCommand = {},
         },
         ["FRESISTANCE"] =
+        {
+            mCommand = {},
+        },
+        ["TEMPERATURE"] =
         {
             mCommand = {},
         },
@@ -4700,9 +4712,11 @@ gCommandTree["CONFIGURE"]["CURR"]                       = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["CAP"]                        = gCommandTree["CONFIGURE"]["CAPACITANCE"]
 gCommandTree["CONFIGURE"]["CONT"]                       = gCommandTree["CONFIGURE"]["CONTINUITY"]
 gCommandTree["CONFIGURE"]["DIOD"]                       = gCommandTree["CONFIGURE"]["DIODE"]
-
 gCommandTree["CONFIGURE"]["RES"]                        = gCommandTree["CONFIGURE"]["RESISTANCE"]
 gCommandTree["CONFIGURE"]["FRES"]                       = gCommandTree["CONFIGURE"]["FRESISTANCE"]
+gCommandTree["CONFIGURE"]["TEMP"]                       = gCommandTree["CONFIGURE"]["TEMPERATURE"]
+gCommandTree["CONFIGURE"]["FREQ"]                       = gCommandTree["CONFIGURE"]["FREQUENCY"]
+gCommandTree["CONFIGURE"]["PER"]                        = gCommandTree["CONFIGURE"]["PERIOD"]
 
 gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
 gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
@@ -6287,6 +6301,25 @@ gCurrentRoot.mCommand.mExecute = function()
     gReadingMemory.clear()
     ResetLimits()
 end
+-- CONFigure:FREQuency [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["FREQUENCY"]
+gCurrentRoot.mCommand.mParameters =
+{
+    gParserTable.mParseAny,
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Frequency
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to DC measurement defaults
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gResetFunctionVariables.ResetFrequency()
+    gSetFunctionAttributes.SetFrequency()
+    gReadingMemory.clear()
+    ResetLimits()
+end
 -- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["FRESISTANCE"]
 gCurrentRoot.mCommand.mParameters =
@@ -6338,6 +6371,25 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
             gErrorQueue.Add(-222)
         end
     end
+end
+-- CONFigure:PERiod [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["PERIOD"]
+gCurrentRoot.mCommand.mParameters =
+{
+    gParserTable.mParseAny,
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Period
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to DC measurement defaults
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gResetFunctionVariables.ResetPeriod()
+    gSetFunctionAttributes.SetPeriod()
+    gReadingMemory.clear()
+    ResetLimits()
 end
 -- CONFigure:RESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["RESISTANCE"]
@@ -6442,6 +6494,40 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
             gErrorQueue.Add(-222)
         end
     end
+end
+-- CONFigure:TEMPerature [{FRTD|RTD|THERmistor|DEFault} [, {<type>|DEFault} [,1 ,{<resolution>|MIN|MAX|DEF}]]]]
+gCurrentRoot = gCommandTree["CONFIGURE"]["TEMPERATURE"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    {
+        mParse = gParserTable.ParseParameterName,
+        mOptional = true,
+        mNames =
+        {
+            ["DEF"]         = gInstrumentAttributes.Transducer_Type.FRTD,
+            ["FRTD"]        = gInstrumentAttributes.Transducer_Type.FRTD,
+            ["RTD"]         = gInstrumentAttributes.Transducer_Type.RTD,
+            ["THERMISTOR"]  = gInstrumentAttributes.Transducer_Type.Thermistor,
+            ["THER"]        = gInstrumentAttributes.Transducer_Type.Thermistor,
+        }
+    },
+    gParserTable.mParseAny,
+    gParserTable.mParseAny
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lType = lParameters[1]
+    local lMeasFunc = gInstrumentState.Measure_Function
+    lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Temperature
+    lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
+    -- Reset to DC measurement defaults
+    gResetFunctionVariables.ResetGeneral()
+    gSetFunctionAttributes.SetGeneral()
+    gResetFunctionVariables.ResetTemperature()
+    gSetFunctionAttributes.SetTemperature()
+    gReadingMemory.clear()
+    ResetLimits()
+
+    gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["TYPE"].mCommand.mExecute({lType})
 end
 -- CONFigure[:VOLTage]:DC [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["DC"]
