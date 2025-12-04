@@ -3022,7 +3022,210 @@ gParserTable.mParseFrequencyNullValue =
         gParserTable.mParseFrequencyNullValueKeywords,
     }
 }
-
+gParserTable.mParseConfCap =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.Capacitance.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.Capacitance.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.Capacitance.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.Capacitance.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.Capacitance.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.Capacitance.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfCurrAC =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.AC_Current.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.AC_Current.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.AC_Current.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.AC_Current.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.AC_Current.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.AC_Current.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfCurrDC =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.DC_Current.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.DC_Current.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.DC_Current.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Current.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.DC_Current.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.DC_Current.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfFreq =
+{
+    gParserTable.mParseAny,
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfFRes =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.FResistance.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.FResistance.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.FResistance.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.FResistance.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.FResistance.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.FResistance.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfRes =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.Resistance.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.Resistance.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.Resistance.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.Resistance.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.Resistance.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.Resistance.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfVoltAC =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.AC_Voltage.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.AC_Voltage.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.AC_Voltage.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.AC_Voltage.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfTemp =
+{
+    {
+        mParse = gParserTable.ParseParameterName,
+        mOptional = true,
+        mNames =
+        {
+            ["DEF"]         = gInstrumentAttributes.Transducer_Type.FRTD,
+            ["FRTD"]        = gInstrumentAttributes.Transducer_Type.FRTD,
+            ["RTD"]         = gInstrumentAttributes.Transducer_Type.RTD,
+            ["THERMISTOR"]  = gInstrumentAttributes.Transducer_Type.Thermistor,
+            ["THER"]        = gInstrumentAttributes.Transducer_Type.Thermistor,
+        }
+    },
+    gParserTable.mParseAny,
+    gParserTable.mParseAny
+}
+gParserTable.mParseConfVoltDC =
+{
+    {
+        mParse = gParserTable.ParseParameterChoice,
+        mOptional = true,
+        mData =
+        {
+            gParserTable.mParseNRf,
+            {
+                mParse = gParserTable.ParseParameterName,
+                mOptional = true,
+                mNames =
+                {
+                    ["MIN"]         = gOperatingBoundaries.DC_Voltage.Range.min,
+                    ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.min,
+                    ["MAX"]         = gOperatingBoundaries.DC_Voltage.Range.max,
+                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.max,
+                    ["DEF"]         = gOperatingBoundaries.DC_Voltage.Range.def,
+                    ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Range.def,
+                    ["AUTO"]        = "AUTO"
+                }
+            }
+        }
+    },
+    gParserTable.mParseAny
+}
 ------------------------------------------------------------------------------
 --
 --  Parse4882
@@ -4109,6 +4312,79 @@ gCommandTree =
             mCommand = {},
         },
     },
+    ["MEASURE"] =
+    {
+        ["AC"] =
+        {
+            mQuery = {},
+        },
+        ["CAPACITANCE"] =
+        {
+            mQuery = {},
+        },
+        ["CONTINUITY"] =
+        {
+            mQuery = {},
+        },
+        ["CURRENT"] =
+        {
+            ["AC"] =
+            {
+                mQuery = {},
+            },
+            ["DC"] =
+            {
+                mQuery = {},
+            },
+        },
+        ["DC"] =
+        {
+            mQuery = {},
+        },
+        ["DIODE"] =
+        {
+            mQuery = {},
+        },
+        ["FREQUENCY"] =
+        {
+            mQuery = {},
+        },
+        ["FRESISTANCE"] =
+        {
+            mQuery = {},
+        },
+        ["PERIOD"] =
+        {
+            mQuery = {},
+        },
+        ["RATIO"] =
+        {
+            mQuery = {},
+        },
+        ["RESISTANCE"] =
+        {
+            mQuery = {},
+        },
+        ["TEMPERATURE"] =
+        {
+            mQuery = {},
+        },
+        ["VOLTAGE"] =
+        {
+            ["AC"] =
+            {
+                mQuery = {},
+            },
+            ["DC"] =
+            {
+                mQuery = {},
+                ["RATIO"] =
+                {
+                    mQuery = {},
+                },
+            },
+        },
+    },
     ["R"] =
     {
         mQuery = {}
@@ -4702,7 +4978,6 @@ gCommandTree["CALCULATE"]["SCALE"]["STAT"]              = gCommandTree["CALCULAT
 gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
 gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
-
 gCommandTree["CONFIGURE"]["RAT"]                        = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["DC"]["RATIO"]                = gCommandTree["CONFIGURE"]["RATIO"]
 gCommandTree["CONFIGURE"]["DC"]["RAT"]                  = gCommandTree["CONFIGURE"]["RATIO"]
@@ -4717,6 +4992,25 @@ gCommandTree["CONFIGURE"]["FRES"]                       = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["TEMP"]                       = gCommandTree["CONFIGURE"]["TEMPERATURE"]
 gCommandTree["CONFIGURE"]["FREQ"]                       = gCommandTree["CONFIGURE"]["FREQUENCY"]
 gCommandTree["CONFIGURE"]["PER"]                        = gCommandTree["CONFIGURE"]["PERIOD"]
+
+gCommandTree["MEAS"]                                    = gCommandTree["MEASURE"]
+gCommandTree["MEASURE"]["VOLTAGE"]["DC"]                = gCommandTree["MEASURE"]["DC"]
+gCommandTree["MEASURE"]["VOLTAGE"]["AC"]                = gCommandTree["MEASURE"]["AC"]
+gCommandTree["MEASURE"]["VOLT"]                         = gCommandTree["MEASURE"]["VOLTAGE"]
+gCommandTree["MEASURE"]["RAT"]                          = gCommandTree["MEASURE"]["RATIO"]
+gCommandTree["MEASURE"]["DC"]["RATIO"]                  = gCommandTree["MEASURE"]["RATIO"]
+gCommandTree["MEASURE"]["DC"]["RAT"]                    = gCommandTree["MEASURE"]["RATIO"]
+gCommandTree["MEASURE"]["VOLTAGE"]["RATIO"]             = gCommandTree["MEASURE"]["RATIO"]
+gCommandTree["MEASURE"]["VOLTAGE"]["RAT"]               = gCommandTree["MEASURE"]["RATIO"]
+gCommandTree["MEASURE"]["CURR"]                         = gCommandTree["MEASURE"]["CURRENT"]
+gCommandTree["MEASURE"]["CAP"]                          = gCommandTree["MEASURE"]["CAPACITANCE"]
+gCommandTree["MEASURE"]["CONT"]                         = gCommandTree["MEASURE"]["CONTINUITY"]
+gCommandTree["MEASURE"]["DIOD"]                         = gCommandTree["MEASURE"]["DIODE"]
+gCommandTree["MEASURE"]["RES"]                          = gCommandTree["MEASURE"]["RESISTANCE"]
+gCommandTree["MEASURE"]["FRES"]                         = gCommandTree["MEASURE"]["FRESISTANCE"]
+gCommandTree["MEASURE"]["TEMP"]                         = gCommandTree["MEASURE"]["TEMPERATURE"]
+gCommandTree["MEASURE"]["FREQ"]                         = gCommandTree["MEASURE"]["FREQUENCY"]
+gCommandTree["MEASURE"]["PER"]                          = gCommandTree["MEASURE"]["PERIOD"]
 
 gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
 gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
@@ -6125,32 +6419,7 @@ gCurrentRoot.mQuery.mExecute = function()
 end
 -- CONFigure:CAPacitance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["CAPACITANCE"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.Capacitance.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.Capacitance.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.Capacitance.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.Capacitance.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.Capacitance.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.Capacitance.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfCap
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Capacitance
@@ -6188,32 +6457,7 @@ gCurrentRoot.mCommand.mExecute = function()
 end
 -- CONFigure:CURRent:AC [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["CURRENT"]["AC"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.AC_Current.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.AC_Current.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.AC_Current.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.AC_Current.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.AC_Current.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.AC_Current.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfCurrAC
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.AC_Current
@@ -6240,32 +6484,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure:CURRent:DC [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["CURRENT"]["DC"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.DC_Current.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.DC_Current.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.DC_Current.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Current.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.DC_Current.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.DC_Current.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfCurrDC
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.DC_Current
@@ -6303,11 +6522,7 @@ gCurrentRoot.mCommand.mExecute = function()
 end
 -- CONFigure:FREQuency [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["FREQUENCY"]
-gCurrentRoot.mCommand.mParameters =
-{
-    gParserTable.mParseAny,
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfFreq
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Frequency
@@ -6322,32 +6537,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["FRESISTANCE"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.FResistance.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.FResistance.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.FResistance.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.FResistance.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.FResistance.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.FResistance.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfFRes
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.FResistance
@@ -6374,11 +6564,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure:PERiod [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["PERIOD"]
-gCurrentRoot.mCommand.mParameters =
-{
-    gParserTable.mParseAny,
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfFreq
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Period
@@ -6393,32 +6579,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure:RESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["RESISTANCE"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.Resistance.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.Resistance.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.Resistance.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.Resistance.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.Resistance.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.Resistance.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfRes
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Resistance
@@ -6445,32 +6606,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure[:VOLTage]:AC [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["AC"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.AC_Voltage.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.AC_Voltage.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.AC_Voltage.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.AC_Voltage.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.AC_Voltage.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfVoltAC
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.AC_Voltage
@@ -6497,23 +6633,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure:TEMPerature [{FRTD|RTD|THERmistor|DEFault} [, {<type>|DEFault} [,1 ,{<resolution>|MIN|MAX|DEF}]]]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["TEMPERATURE"]
-gCurrentRoot.mCommand.mParameters = 
-{
-    {
-        mParse = gParserTable.ParseParameterName,
-        mOptional = true,
-        mNames =
-        {
-            ["DEF"]         = gInstrumentAttributes.Transducer_Type.FRTD,
-            ["FRTD"]        = gInstrumentAttributes.Transducer_Type.FRTD,
-            ["RTD"]         = gInstrumentAttributes.Transducer_Type.RTD,
-            ["THERMISTOR"]  = gInstrumentAttributes.Transducer_Type.Thermistor,
-            ["THER"]        = gInstrumentAttributes.Transducer_Type.Thermistor,
-        }
-    },
-    gParserTable.mParseAny,
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfTemp
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lType = lParameters[1]
     local lMeasFunc = gInstrumentState.Measure_Function
@@ -6531,32 +6651,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure[:VOLTage]:DC [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["DC"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.DC_Voltage.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.DC_Voltage.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.DC_Voltage.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfVoltDC
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
@@ -6583,32 +6678,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
 end
 -- CONFigure[:VOLTage][:DC]:RATio [{<range>|AUTO|MIN|MAX|DEF}[, {<resolution>|MIN|MAX|DEF}]]
 gCurrentRoot = gCommandTree["CONFIGURE"]["DC"]["RATIO"]
-gCurrentRoot.mCommand.mParameters =
-{
-    {
-        mParse = gParserTable.ParseParameterChoice,
-        mOptional = true,
-        mData =
-        {
-            gParserTable.mParseNRf,
-            {
-                mParse = gParserTable.ParseParameterName,
-                mOptional = true,
-                mNames =
-                {
-                    ["MIN"]         = gOperatingBoundaries.DC_Voltage.Range.min,
-                    ["MINIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.min,
-                    ["MAX"]         = gOperatingBoundaries.DC_Voltage.Range.max,
-                    ["MAXIMUM"]     = gOperatingBoundaries.DC_Voltage.Range.max,
-                    ["DEF"]         = gOperatingBoundaries.DC_Voltage.Range.def,
-                    ["DEFAULT"]     = gOperatingBoundaries.DC_Voltage.Range.def,
-                    ["AUTO"]        = "AUTO"
-                }
-            }
-        }
-    },
-    gParserTable.mParseAny
-}
+gCurrentRoot.mCommand.mParameters = gParserTable.mParseConfVoltDC
 gCurrentRoot.mCommand.mExecute = function(lParameters)
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Ratio
@@ -6632,6 +6702,102 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
             gErrorQueue.Add(-222)
         end
     end
+end
+
+------------------------------------------------------------------------------
+--
+-- MEASure subsystem
+--
+-----------------------------------------------------------------------------
+
+-- MEASure:CAPacitance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["CAPACITANCE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCap
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CAPACITANCE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:CONTinuity?
+gCurrentRoot = gCommandTree["MEASURE"]["CONTINUITY"]
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CONTINUITY"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:CURRent:AC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["CURRENT"]["AC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCurrAC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CURRENT"]["AC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:CURRent:DC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["CURRENT"]["DC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCurrDC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CURRENT"]["DC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:DIODe?
+gCurrentRoot = gCommandTree["MEASURE"]["DIODE"]
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["DIODE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:FREQuency? [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["FREQUENCY"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFreq
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["FREQUENCY"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:FRESistance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["FRESISTANCE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFRes
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["FRESISTANCE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:PERiod? [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["PERIOD"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFreq
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["PERIOD"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:RESistance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["RESISTANCE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfRes
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["RESISTANCE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:TEMPerature? [{FRTD|RTD|FTHermistor|THERmistor|TCouple|DEFault} [, {<type>|DEFault} [,1 ,{<resolution>|MIN|MAX|DEF}]]]]
+gCurrentRoot = gCommandTree["MEASURE"]["TEMPERATURE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfTemp
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["TEMPERATURE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure[:VOLTage]:AC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["AC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltAC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure[:VOLTage]:DC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["DC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure[:VOLTage][:DC]:RATio? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["DC"]["RATIO"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]["RATIO"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
 end
 
 ------------------------------------------------------------------------------
