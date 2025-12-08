@@ -85,7 +85,7 @@ local gAbort = false
 -- Initialize the reading buffer as described in 34461A manual
 local gReadingMemory =
 {
-    bufferSize = 10000,
+    bufferSize = 100000,
     readingBuffer = nil,
     lastRemoved = -1,       -- Timestamp of the last buffer reading to be removed
     units = "VDC",          -- Buffer reading units
@@ -100,7 +100,8 @@ local gReadingMemory =
         sdeviation  = 0,
     },
 }
-gReadingMemory.readingBuffer = buffer.make(gReadingMemory.bufferSize, buffer.STYLE_STANDARD)
+-- This sacrifices some accuracy, buffer size is 100,000 not 10,000 like 34461A
+gReadingMemory.readingBuffer = defbuffer1
 gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
 
 -- Byte representation of commonly used characters
@@ -188,6 +189,8 @@ local gMeasure      = dmm.measure
 local gRel          = gMeasure.rel
 local gTM           = trigger.model
 local gTriggerTimer = trigger.timer[1]
+local gDisplayText  = ""
+local gDisplayTextVar = nil
 
 local gNan = 9.91e37
 local gInf = 9.90e37
@@ -264,6 +267,9 @@ gAccessors.mSetFourRTD              = makesetter(gMeasure, "fourrtd")
 
 gAccessors.mGetLimitAudible         = makegetter(gLimit, "audible")
 gAccessors.mSetLimitAudible         = makesetter(gLimit, "audible")
+
+gAccessors.mGetLightstate           = makegetter(display, "lightstate")
+gAccessors.mSetLightstate           = makesetter(display, "lightstate")
 
 --============================================================================
 --
@@ -533,6 +539,20 @@ local gInstrumentState =
         Display_String =
         {
             value = nil
+        },
+        Display_State =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = gAccessors.mGetLightstate,
+            setter = gAccessors.mSetLightstate,
+        },
+        Display_View =
+        {
+            value = nil,
+            valueParent = nil,
+            getter = nil,
+            setter = nil,
         },
         IDN_String =
         {
@@ -1092,6 +1112,37 @@ gInstrumentState.FResistance.NPLC               = gInstrumentState.Resistance.NP
 
 local gInstrumentAttributes =
 {
+    Display_State =
+    {
+        ON =
+        {
+            DMM_Enum = display.STATE_LCD_100,
+            shorthand = 1,
+        },
+        OFF =
+        {
+            DMM_Enum = display.STATE_LCD_OFF,
+            shorthand = 0,
+        },
+    },
+    Display_View =
+    {
+        Numeric =
+        {
+            DMM_Enum = display.SCREEN_HOME,
+            shorthand = "NUM",
+        },
+        Histogram =
+        {
+            DMM_Enum = display.SCREEN_HISTOGRAM,
+            shorthand = "HIST",
+        },
+        TChart =
+        {
+            DMM_Enum = display.SCREEN_GRAPH,
+            shorthand = "TCH",
+        }
+    },
     Limit_Beeper =
     {
         ON =
@@ -1312,9 +1363,10 @@ local gInstrumentAttributes =
         },
     }
 }
-
 gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
 
+gInstrumentState.General.Display_State.valueParent      = gInstrumentAttributes.Display_State
+gInstrumentState.General.Display_View.valueParent       = gInstrumentAttributes.Display_View
 gInstrumentState.General.Beeper_State.valueParent       = gInstrumentAttributes.Limit_Beeper
 gInstrumentState.General.Scale_Function.valueParent     = gInstrumentAttributes.Scale_Unit
 gInstrumentState.General.Scale_State.valueParent        = gInstrumentAttributes.OnOff
@@ -1447,6 +1499,8 @@ local gResetFunctionVariables = {
     ResetGeneral = function()
         gTriggerModel.tmInitialized = false
         gInstrumentState.General.Display_String.value       = ""
+        gInstrumentState.General.Display_State.value        = gInstrumentAttributes.Display_State.ON
+        gInstrumentState.General.Display_View.value         = gInstrumentAttributes.Display_View.Numeric
         gInstrumentState.General.IDN_String.value           = string.format("Keysight Technologies,34461A,%s,%s", localnode.serialno, localnode.version)
         gInstrumentState.General.Beeper_State.value         = gInstrumentAttributes.Limit_Beeper.ON
         gInstrumentState.General.DB_Reference.value         = 1
@@ -1586,6 +1640,8 @@ end
 local gSetFunctionAttributes = 
 {
     SetGeneral = function()
+        display.changescreen(gInstrumentState.General.Display_View.value.DMM_Enum)
+        gAccessors.mSetLightstate(gInstrumentState.General.Display_State.value.DMM_Enum)
         gAccessors.mSetLimitAudible(gInstrumentState.General.Beeper_State.value.DMM_Enum)
         if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
         or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
@@ -3262,6 +3318,20 @@ gParserTable.mParseConfVoltDC =
     },
     gParserTable.mParseAny
 }
+gParserTable.mParseDisplayView =
+{
+    mParse = gParserTable.ParseParameterName,
+    mNames =
+    {
+        ["NUM"]         = gInstrumentAttributes.Display_View.Numeric,
+        ["NUMERIC"]     = gInstrumentAttributes.Display_View.Numeric,
+        ["HIST"]        = gInstrumentAttributes.Display_View.Histogram,
+        ["HISTOGRAM"]   = gInstrumentAttributes.Display_View.Histogram,
+        ["TCH"]         = gInstrumentAttributes.Display_View.TChart,
+        ["TCHART"]      = gInstrumentAttributes.Display_View.TChart,
+    }
+}
+
 ------------------------------------------------------------------------------
 --
 --  Parse4882
@@ -4099,7 +4169,7 @@ end
 --============================================================================
 
 gCommandTree = 
-{
+{ 
     ["*IDN"] = {mQuery = {}},
     ["*CLS"] = {mCommand = {}},
     ["*ESE"] = {mCommand = {}, mQuery = {}},
@@ -4333,6 +4403,33 @@ gCommandTree =
     {
         ["EXIT"] =
         {
+            mCommand = {},
+        }
+    },
+    ["DISPLAY"] =
+    {
+        ["STATE"] =
+        {
+            mCommand = {},
+            mQuery = {},
+        },
+        ["TEXT"] =
+        {
+            mQuery = {},
+            mCommand = {},
+            ["CLEAR"] =
+            {
+                mCommand = {},
+            },
+            ["DATA"] =
+            {
+                mQuery = {},
+                mCommand = {},
+            },
+        },
+        ["VIEW"] =
+        {
+            mQuery = {},
             mCommand = {},
         }
     },
@@ -4965,6 +5062,10 @@ gCommandTree =
         {
             mQuery = {},
         },
+        ["LOCAL"] =
+        {
+            mCommand = {},
+        },
         ["PRESET"] = 
         {
             mCommand = {},
@@ -5088,6 +5189,14 @@ gCommandTree["CONFIGURE"]["FRES"]                       = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["TEMP"]                       = gCommandTree["CONFIGURE"]["TEMPERATURE"]
 gCommandTree["CONFIGURE"]["FREQ"]                       = gCommandTree["CONFIGURE"]["FREQUENCY"]
 gCommandTree["CONFIGURE"]["PER"]                        = gCommandTree["CONFIGURE"]["PERIOD"]
+
+gCommandTree["DISP"]                                    = gCommandTree["DISPLAY"]
+gCommandTree["DISPLAY"]["STAT"]                         = gCommandTree["DISPLAY"]["STATE"]
+gCommandTree["DISPLAY"].mCommand                        = gCommandTree["DISPLAY"]["STATE"].mCommand
+gCommandTree["DISPLAY"].mQuery                          = gCommandTree["DISPLAY"]["STATE"].mQuery
+gCommandTree["DISPLAY"]["TEXT"]["CLE"]                  = gCommandTree["DISPLAY"]["TEXT"]["CLEAR"]
+gCommandTree["DISPLAY"]["TEXT"].mCommand                = gCommandTree["DISPLAY"]["TEXT"]["DATA"].mCommand
+gCommandTree["DISPLAY"]["TEXT"].mQuery                  = gCommandTree["DISPLAY"]["TEXT"]["DATA"].mQuery
 
 gCommandTree["MEAS"]                                    = gCommandTree["MEASURE"]
 gCommandTree["MEASURE"]["VOLTAGE"]["DC"]                = gCommandTree["MEASURE"]["DC"]
@@ -5252,6 +5361,7 @@ gCommandTree["SYSTEM"]["LAB"]                           = gCommandTree["SYSTEM"]
 gCommandTree["SYSTEM"]["LFR"]                           = gCommandTree["SYSTEM"]["LFREQUENCY"]
 gCommandTree["SYSTEM"]["PRES"]                          = gCommandTree["SYSTEM"]["PRESET"]
 gCommandTree["SYSTEM"]["VERS"]                          = gCommandTree["SYSTEM"]["VERSION"]
+gCommandTree["SYSTEM"]["LOC"]                           = gCommandTree["SYSTEM"]["LOCAL"]
 
 gCommandTree["ROUT"]                                    = gCommandTree["ROUTE"]
 gCommandTree["ROUTE"]["TERM"]                           = gCommandTree["ROUTE"]["TERMINALS"]
@@ -6811,98 +6921,61 @@ end
 
 ------------------------------------------------------------------------------
 --
--- MEASure subsystem
+-- DISPlay subsystem
 --
 -----------------------------------------------------------------------------
 
--- MEASure:CAPacitance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["CAPACITANCE"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCap
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["CAPACITANCE"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["DISPLAY"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lState = lParameters[1]
+    local lDisplayState = gInstrumentState.General.Display_State
+    if lState == true then
+        lDisplayState.value = gInstrumentAttributes.Display_State.ON
+    else
+        lDisplayState.value = gInstrumentAttributes.Display_State.OFF
+    end
+    lDisplayState.setter(lDisplayState.value.DMM_Enum)
 end
--- MEASure:CONTinuity?
-gCurrentRoot = gCommandTree["MEASURE"]["CONTINUITY"]
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["CONTINUITY"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Display_State.value.shorthand)
 end
--- MEASure:CURRent:AC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["CURRENT"]["AC"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCurrAC
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["CURRENT"]["AC"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay:TEXT:CLEar
+gCurrentRoot = gCommandTree["DISPLAY"]["TEXT"]["CLEAR"]
+gCurrentRoot.mCommand.mExecute = function()
+    if gDisplayTextVar then
+        display.delete(gDisplayTextVar)
+    end
 end
--- MEASure:CURRent:DC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["CURRENT"]["DC"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCurrDC
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["CURRENT"]["DC"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay:TEXT[:DATA] "<string>"
+gCurrentRoot = gCommandTree["DISPLAY"]["TEXT"]["DATA"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseString}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gDisplayText = lParameters[1]
+    if gDisplayText == "" and gDisplayTextVar then
+        display.delete(gDisplayTextVar)
+    else
+        gDisplayTextVar = display.prompt(display.BUTTONS_NONE, gDisplayText)
+    end
 end
--- MEASure:DIODe?
-gCurrentRoot = gCommandTree["MEASURE"]["DIODE"]
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["DIODE"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay:TEXT[:DATA]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gDisplayText)
 end
--- MEASure:FREQuency? [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["FREQUENCY"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFreq
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["FREQUENCY"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay:VIEW {NUMeric|HISTogram|TCHart|METer}
+gCurrentRoot = gCommandTree["DISPLAY"]["VIEW"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDisplayView}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lDisplayView = lParameters[1]
+    local lDisplayVar = gInstrumentState.General.Display_View
+    lDisplayVar.value = lDisplayView
+    display.changescreen(lDisplayVar.value.DMM_Enum)
 end
--- MEASure:FRESistance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["FRESISTANCE"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFRes
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["FRESISTANCE"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
-end
--- MEASure:PERiod? [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["PERIOD"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFreq
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["PERIOD"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
-end
--- MEASure:RESistance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["RESISTANCE"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfRes
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["RESISTANCE"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
-end
--- MEASure:TEMPerature? [{FRTD|RTD|FTHermistor|THERmistor|TCouple|DEFault} [, {<type>|DEFault} [,1 ,{<resolution>|MIN|MAX|DEF}]]]]
-gCurrentRoot = gCommandTree["MEASURE"]["TEMPERATURE"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfTemp
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["TEMPERATURE"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
-end
--- MEASure[:VOLTage]:AC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["AC"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltAC
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
-end
--- MEASure[:VOLTage]:DC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["DC"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
-end
--- MEASure[:VOLTage][:DC]:RATio? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
-gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["DC"]["RATIO"]
-gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
-gCurrentRoot.mQuery.mExecute = function(lParameters)
-    gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]["RATIO"].mCommand.mExecute(lParameters)
-    gCommandTree["READ"].mQuery.mExecute()
+--DISPlay:VIEW?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Display_View.value.shorthand)
 end
 
 ------------------------------------------------------------------------------
@@ -7012,6 +7085,102 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
     else
         gErrorQueue.Add(-222)
     end
+end
+
+------------------------------------------------------------------------------
+--
+-- MEASure subsystem
+--
+-----------------------------------------------------------------------------
+
+-- MEASure:CAPacitance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["CAPACITANCE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCap
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CAPACITANCE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:CONTinuity?
+gCurrentRoot = gCommandTree["MEASURE"]["CONTINUITY"]
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CONTINUITY"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:CURRent:AC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["CURRENT"]["AC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCurrAC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CURRENT"]["AC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:CURRent:DC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["CURRENT"]["DC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfCurrDC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["CURRENT"]["DC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:DIODe?
+gCurrentRoot = gCommandTree["MEASURE"]["DIODE"]
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["DIODE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:FREQuency? [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["FREQUENCY"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFreq
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["FREQUENCY"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:FRESistance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["FRESISTANCE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFRes
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["FRESISTANCE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:PERiod? [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["PERIOD"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfFreq
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["PERIOD"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:RESistance? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["RESISTANCE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfRes
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["RESISTANCE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure:TEMPerature? [{FRTD|RTD|FTHermistor|THERmistor|TCouple|DEFault} [, {<type>|DEFault} [,1 ,{<resolution>|MIN|MAX|DEF}]]]]
+gCurrentRoot = gCommandTree["MEASURE"]["TEMPERATURE"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfTemp
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["TEMPERATURE"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure[:VOLTage]:AC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["AC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltAC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure[:VOLTage]:DC? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["DC"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
+end
+-- MEASure[:VOLTage][:DC]:RATio? [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
+gCurrentRoot = gCommandTree["MEASURE"]["VOLTAGE"]["DC"]["RATIO"]
+gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]["RATIO"].mCommand.mExecute(lParameters)
+    gCommandTree["READ"].mQuery.mExecute()
 end
 
 ------------------------------------------------------------------------------
@@ -8980,7 +9149,10 @@ gCurrentRoot.mQuery.mExecute = function()
     gErrorQueue.ReadError()
 end
 -- SYSTem:HELP?
-print("PLACEHOLDER")
+gCurrentRoot = gCommandTree["SYSTEM"]["HELP"]
+gCurrentRoot.mQuery.mExecute = function()
+    print("PLACEHOLDER")
+end
 -- SYSTem:IDENtify {DEFault|AT34461A|HP34401A}*
 gCurrentRoot = gCommandTree["SYSTEM"]["IDENTIFY"]
 gCurrentRoot.mCommand.mParameters =
@@ -9035,6 +9207,12 @@ gCurrentRoot.mQuery.mExecute = function ()
             gPLC
         )
     )
+end
+-- SYSTem:LOCal
+gCurrentRoot = gCommandTree["SYSTEM"]["LOCAL"]
+gCurrentRoot.mCommand.mExecute = function()
+    gTM.abort()
+    EndEmulation()
 end
 -- SYSTem:PRESet
 gCurrentRoot = gCommandTree["SYSTEM"]["PRESET"]
@@ -9254,7 +9432,6 @@ Initialize34461A()
 --     "Instrument emulation initialized"
 -- )
 -- beeper.beep(0.15, 680)
-
 Engine34461A()
 
 --endscript
