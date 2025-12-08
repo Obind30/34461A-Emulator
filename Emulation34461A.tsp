@@ -271,6 +271,9 @@ gAccessors.mSetLimitAudible         = makesetter(gLimit, "audible")
 gAccessors.mGetLightstate           = makegetter(display, "lightstate")
 gAccessors.mSetLightstate           = makesetter(display, "lightstate")
 
+--gAccessors.mGetGPIBAddress          = makegetter(gpib, "address")
+--gAccessors.mSetGPIBAddress          = makesetter(gpib, "address")
+
 --============================================================================
 --
 -- Model specific tables
@@ -2459,6 +2462,53 @@ end
 
 ------------------------------------------------------------------------------
 --
+-- ParseParameterAddress Does not throw error for leading zeros
+--
+------------------------------------------------------------------------------
+
+gParserTable.ParseParameterAddress = function (lParameter)
+    local lCharCode
+    local lStringLen = string.len(lParameter)-2
+    local lOctet = 0
+    local lOctetDigits = 0
+    local lDotCount = 0
+
+    lCharCode = string.byte(lParameter, 1)
+    if (lCharCode == gCharCodes.mSingleQuote or lCharCode == gCharCodes.mDoubleQuote)
+    and lCharCode == string.byte(lParameter, -1) then
+        --lParameter = string.sub(lParameter, 2, -2)
+        for i=1, lStringLen do
+            lCharCode = string.byte(lParameter, i+1)
+            if lCharCode >= gCharCodes.mZero and lCharCode <= gCharCodes.mNine then
+                lOctet = (lOctet*10) + (lCharCode - gCharCodes.mZero)
+                lOctetDigits = lOctetDigits + 1
+                if lOctet > 255 then
+                    return nil, -104
+                end
+            elseif lCharCode == gCharCodes.mDot then
+                if lOctetDigits == 0 then
+                    return nil, -104
+                else
+                    lDotCount = lDotCount + 1
+                    if lDotCount > 3 then
+                        return nil, -104
+                    end
+                    lOctet = 0
+                    lOctetDigits = 0
+                end
+            end
+        end        
+    else
+        return nil, -104
+    end
+    if lDotCount ~= 3 or lOctetDigits == 0 then
+        return nil, -104
+    end
+    return lParameter
+end
+
+------------------------------------------------------------------------------
+--
 -- Reusable parameter tables
 --
 ------------------------------------------------------------------------------
@@ -2469,6 +2519,7 @@ gParserTable.mParseNRfOptional  = {mParse = gParserTable.ParseParameterNRf, mOpt
 gParserTable.mParseBooleanKeywords = {mParse = gParserTable.ParseParameterBoolean}
 gParserTable.mParseInteger      = {mParse = gParserTable.ParseParameterIntegerNRf}
 gParserTable.mParseString       = {mParse = gParserTable.ParseParameterString}
+gParserTable.mParseAddress      = {mParse = gParserTable.ParseParameterAddress}
 gParserTable.mParseDCVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
@@ -5031,6 +5082,55 @@ gCommandTree =
                 mQuery = {},
             },
         },
+        ["COMMUNICATE"] =
+        {
+            ["GPIB"] =
+            {
+                ["ADDRESS"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+            },
+            ["LAN"] =
+            {
+                ["CONTROL"] =
+                {
+                    mQuery = {},
+                },
+                ["DHCP"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["GATEWAY"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["IPADDRESS"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["MAC"] =
+                {
+                    mQuery = {},
+                },
+                ["SMASK"] =
+                {
+                    mQuery = {},
+                    mCommand = {},
+                },
+                ["TELNET"] =
+                {
+                    ["PROMPT"] =
+                    {
+                        mQuery = {},
+                    },
+                },
+            }
+        },
         ["DATE"] =
         {
             mCommand = {},
@@ -5362,6 +5462,15 @@ gCommandTree["SYSTEM"]["LFR"]                           = gCommandTree["SYSTEM"]
 gCommandTree["SYSTEM"]["PRES"]                          = gCommandTree["SYSTEM"]["PRESET"]
 gCommandTree["SYSTEM"]["VERS"]                          = gCommandTree["SYSTEM"]["VERSION"]
 gCommandTree["SYSTEM"]["LOC"]                           = gCommandTree["SYSTEM"]["LOCAL"]
+
+gCommandTree["SYSTEM"]["COMM"]                          = gCommandTree["SYSTEM"]["COMMUNICATE"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["GPIB"]["ADDR"]   = gCommandTree["SYSTEM"]["COMMUNICATE"]["GPIB"]["ADDRESS"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["CONT"]    = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["CONTROL"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["GAT"]     = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["GATEWAY"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["IPAD"]    = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["IPADDRESS"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["SMAS"]    = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["SMASK"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]["PROM"]  = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]["PROMPT"]
+gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELN"]    = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]
 
 gCommandTree["ROUT"]                                    = gCommandTree["ROUTE"]
 gCommandTree["ROUTE"]["TERM"]                           = gCommandTree["ROUTE"]["TERMINALS"]
@@ -9252,6 +9361,117 @@ gCurrentRoot = gCommandTree["SYSTEM"]["VERSION"]
 gCurrentRoot.mQuery.mExecute = function()
     print(1994.0)
 end
+
+------------------------------------------------------------------------------
+--
+-- SYSTem:COMMunicate subsystem
+--
+-----------------------------------------------------------------------------
+
+-- SYSTem:COMMunicate:GPIB:ADDRess <address>
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["GPIB"]["ADDRESS"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseInteger}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    if available(gpib) then
+        local lAddress = lParameters[1]
+        if lAddress > 0 and lAddress < 30 then
+            gpib.address = lAddress
+        else
+            gErrorQueue.Add(-222)
+        end
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- SYSTem:COMMunicate:GPIB:ADDRess?
+gCurrentRoot.mQuery.mExecute = function()
+    if available(gpib) then
+        print(FormatNumber(gpib.address, true))
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- SYSTem:COMMunicate:LAN:CONTrol?
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["CONTROL"]
+gCurrentRoot.mQuery.mExecute = function()
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    print(gateway)
+end
+-- SYSTem:COMMunicate:LAN:DHCP {OFF|ON}
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["DHCP"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lState = lParameters[1]
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    if lState == true then
+        lan.ipconfig(lan.MODE_AUTO)
+    elseif lState == false then
+        lan.ipconfig(lan.MODE_MANUAL, ipV4Address, subnetMask, gateway)
+    end
+end
+-- SYSTem:COMMunicate:LAN:DHCP?
+gCurrentRoot.mQuery.mExecute = function()
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    if method == lan.MODE_AUTO then print(1)
+    elseif method == lan.MODE_manual then print(0)
+    end
+end
+-- SYSTem:COMMunicate:LAN:GATeway "<address>"
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["GATEWAY"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAddress}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lAddress = lParameters[1]
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    if method == lan.MODE_MANUAL then
+        lan.ipconfig(method, ipV4Address, subnetMask, lAddress)
+    end
+end
+-- SYSTem:COMMunicate:LAN:GATeway? [{CURRent|STATic}]
+gCurrentRoot.mQuery.mExecute = function()
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    print(method)
+end
+-- SYSTem:COMMunicate:LAN:IPADdress "<address>"
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["IPADDRESS"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAddress}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lAddress = lParameters[1]
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    if method == lan.MODE_MANUAL then
+        lan.ipconfig(method, lAddress, subnetMask, gateway)
+    end
+end
+-- SYSTem:COMMunicate:LAN:IPADdress? [{CURRent|STATic}]
+gCurrentRoot.mQuery.mExecute = function()
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    print(ipV4Address)
+end
+-- SYSTem:COMMunicate:LAN:MAC?
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["MAC"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(lan.macaddress)
+end
+-- SYSTem:COMMunicate:LAN:SMASk "<mask>"
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["SMASK"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseAddress}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lAddress = lParameters[1]
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    if method == lan.MODE_MANUAL then
+        lan.ipconfig(method, ipV4Address, lAddress, gateway)
+    end
+end
+-- SYSTem:COMMunicate:LAN:SMASk? [{CURRent|STATic}]
+gCurrentRoot.mQuery.mExecute = function()
+    local method, ipV4Address, subnetMask, gateway = lan.ipconfig()
+    print(subnetMask)
+end
+-- SYSTem:COMMunicate:LAN:TELNet:PROMpt?
+gCurrentRoot = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]["PROMPT"]
+gCurrentRoot.mQuery.mExecute = function()
+    print("TSP>")
+end
+
 
 ------------------------------------------------------------------------------
 --
