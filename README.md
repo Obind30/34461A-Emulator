@@ -26,7 +26,7 @@ This command will reset the instrument to 34461A defaults and load all the neces
 `Engine34461A()`
 After sending, the DMM6500 will only accept 34461A SCPI commands.
 To get the instrument out of this state send:
-`abort`
+`DEV:EXIT`
 3) To send a single 34461A SCPI command send:
 `Execute2400("<command>")`
 4) To reset the instrument back to 34461A defaults send `ResetDefaults()` or while in emulation mode send `*RST`
