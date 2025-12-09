@@ -108,6 +108,7 @@ gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
 local gCharCodes =
 {
     mB              = string.byte([[B]]),
+    mBackSlash      = string.byte([[\]]),
     mBracketLeft    = string.byte("["),
     mBracketRight   = string.byte("]"),
     mC              = string.byte([[C]]),
@@ -2507,6 +2508,66 @@ gParserTable.ParseParameterAddress = function (lParameter)
     return lParameter
 end
 
+gParserTable.ParseFileFolderName = function(lParameter)
+    
+    if string.len(lParameter) == 0 then 
+        return nil, -104
+    end
+
+    local lCharCode = string.byte(lParameter, 1)
+
+    for i=1, string.len(lParameter) do
+        lCharCode = string.byte(lParameter, i)
+        if not((lCharCode >= gCharCodes.mZero and lCharCode <= gCharCodes.mNine) 
+        or (lCharCode >= string.byte([[A]]) and lCharCode <= string.byte([[Z]]))
+        or (lCharCode >= string.byte([[a]]) and lCharCode <= string.byte([[z]]))
+        or lCharCode == string.byte([[-]]) or lCharCode == string.byte([[_]]) 
+        or lCharCode == string.byte([[.]])) then
+            return nil, -104
+        end
+    end
+    return lParameter
+end
+
+gParserTable.ParseFilePath = function(lParameter)
+    -- Check that quotes are present and match
+    if not((string.byte(lParameter, 1) == gCharCodes.mSingleQuote or string.byte(lParameter, 1) == gCharCodes.mDoubleQuote)
+    and string.byte(lParameter, 1) == string.byte(lParameter, -1)) then
+        return nil, -104
+    end
+    
+    -- Skip USB lable or initial backslash
+    local currentIndex = 2
+    if lParameter == "\"USB:\\\"" then return "/usb1/"
+    elseif string.sub(lParameter, 2, 6) == "USB:\\" then currentIndex = 7
+    elseif string.byte(lParameter, 2) == gCharCodes.mBackSlash then currentIndex = 3 end
+
+    -- Iterate through directories, checking that their name is valid
+    local slashIndex = string.find(lParameter, [[\]], currentIndex)
+
+    local lReturnString
+    local lError
+
+    while slashIndex ~= nil do
+        lReturnString, lError = gParserTable.ParseFileFolderName(string.sub(lParameter, currentIndex, slashIndex-1))
+        if lError then return nil, lError end
+        currentIndex = slashIndex+1
+        slashIndex = string.find(lParameter, [[\]], currentIndex)
+        --print(currentIndex, slashIndex)
+    end
+    lReturnString, lError = gParserTable.ParseFileFolderName(string.sub(lParameter, currentIndex, -2))
+    if lError then return nil, lError end
+    
+    -- Convert to 6500 filepath
+    lParameter = string.gsub(lParameter, "\\", "/")
+    if string.sub(lParameter, 2, 6) == "USB:/" then
+        lParameter = "/usb1/" .. string.sub(lParameter, 7, -2)
+    else
+        lParameter = string.sub(lParameter, 2, -2)
+    end
+    return lParameter
+end
+
 ------------------------------------------------------------------------------
 --
 -- Reusable parameter tables
@@ -2520,6 +2581,7 @@ gParserTable.mParseBooleanKeywords = {mParse = gParserTable.ParseParameterBoolea
 gParserTable.mParseInteger      = {mParse = gParserTable.ParseParameterIntegerNRf}
 gParserTable.mParseString       = {mParse = gParserTable.ParseParameterString}
 gParserTable.mParseAddress      = {mParse = gParserTable.ParseParameterAddress}
+gParserTable.mParseFilePath     = {mParse = gParserTable.ParseFilePath}
 gParserTable.mParseDCVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
@@ -4569,6 +4631,45 @@ gCommandTree =
             },
         },
     },
+    ["MMEMORY"] =
+    {
+        ["CATALOG"] =
+        {
+            mQuery = {},
+            ["ALL"] =
+            {
+                mQuery = {},
+            },
+        },
+        ["CDIRECTORY"] =
+        {
+            mQuery = {},
+            mCommand = {},
+        },
+        ["COPY"] = 
+        {
+            mCommand = {},
+        },
+        ["DELETE"] =
+        {
+            mCommand = {},
+        },
+        ["MDIRECTORY"] =
+        {
+            mCommand = {},
+        },
+        ["RDIRECTORY"] =
+        {
+            mCommand = {},
+        },
+        ["STORE"] =
+        {
+            ["DATA"] =
+            {
+                mCommand = {},
+            },
+        },
+    },
     ["R"] =
     {
         mQuery = {}
@@ -5316,6 +5417,15 @@ gCommandTree["MEASURE"]["FRES"]                         = gCommandTree["MEASURE"
 gCommandTree["MEASURE"]["TEMP"]                         = gCommandTree["MEASURE"]["TEMPERATURE"]
 gCommandTree["MEASURE"]["FREQ"]                         = gCommandTree["MEASURE"]["FREQUENCY"]
 gCommandTree["MEASURE"]["PER"]                          = gCommandTree["MEASURE"]["PERIOD"]
+
+gCommandTree["MMEM"]                                    = gCommandTree["MMEMORY"]
+gCommandTree["MMEMORY"]["CAT"]                          = gCommandTree["MMEMORY"]["CATALOG"]
+gCommandTree["MMEMORY"]["CATALOG"].mQuery               = gCommandTree["MMEMORY"]["CATALOG"]["ALL"].mQuery
+gCommandTree["MMEMORY"]["CDIR"]                         = gCommandTree["MMEMORY"]["CDIRECTORY"]
+gCommandTree["MMEMORY"]["DEL"]                          = gCommandTree["MMEMORY"]["DELETE"]
+gCommandTree["MMEMORY"]["MDIR"]                         = gCommandTree["MMEMORY"]["MDIRECTORY"]
+gCommandTree["MMEMORY"]["RDIR"]                         = gCommandTree["MMEMORY"]["RDIRECTORY"]
+gCommandTree["MMEMORY"]["STOR"]                         = gCommandTree["MMEMORY"]["STORE"]
 
 gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
 gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
@@ -7290,6 +7400,143 @@ gCurrentRoot.mQuery.mParameters = gParserTable.mParseConfVoltDC
 gCurrentRoot.mQuery.mExecute = function(lParameters)
     gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]["RATIO"].mCommand.mExecute(lParameters)
     gCommandTree["READ"].mQuery.mExecute()
+end
+
+------------------------------------------------------------------------------
+--
+-- MMEMory subsystem
+--
+-----------------------------------------------------------------------------
+
+-- MMEMory:CATalog[:ALL]? [<folder>[<filespec>]]
+gCurrentRoot = gCommandTree["MMEMORY"]["CATALOG"]["ALL"]
+gCurrentRoot.mQuery.mParameters = {{mParse = gParserTable.ParseFilePath, mOptional = true}}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lPath = lParameters[1]
+    -- Ensure path is absolute
+    if lPath == nil then
+        lPath = fs.cwd()
+    elseif string.sub(lPath, 1, 6) ~= "/usb1/" then
+        lPath = fs.cwd() .. "/" .. lPath
+    end
+    local lReturnString = ""
+    -- Check that directory exists and is empty
+    if fs.is_dir(lPath) then
+        local lEntries = fs.readdir(lPath)
+        if lEntries then
+            for _, entryName in pairs(fs.readdir(lPath)) do
+                lReturnString = lReturnString..","..entryName
+            end
+        end
+        print(FormatBlockLength(string.sub(lReturnString, 2)))
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- MMEMory:CDIRectory <folder>
+gCurrentRoot = gCommandTree["MMEMORY"]["CDIRECTORY"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFilePath}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lPath = lParameters[1]
+    print(lPath)
+    if fs.is_dir(lPath) == true then
+        fs.chdir(lPath)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- MMEMory:CDIRectory?
+gCurrentRoot.mQuery.mExecute = function()
+    local lPath = fs.cwd()
+    lPath = "USB:\\"..string.sub(string.gsub(lPath, "/", "\\"), 7)
+    print(lPath)
+end
+-- MMEMory:MDIRectory <folder>
+gCurrentRoot = gCommandTree["MMEMORY"]["MDIRECTORY"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFilePath}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lPath = lParameters[1]
+    -- Ensure path is absolute
+    if string.sub(lPath, 1, 6) ~= "/usb1/" then
+        lPath = fs.cwd() .. "/" .. lPath
+    end
+
+    -- Find the parent path and directory substring
+    local lParentPath = lPath
+    local lDirNameSearch = lPath
+    local lSlashIndex = 1;
+    while lSlashIndex ~= nil do
+        if lSlashIndex > 1 then
+            lParentPath = string.sub(lPath, 1, lSlashIndex-1)
+        end
+        lDirNameSearch = string.sub(lPath, lSlashIndex+1, -1)
+        lSlashIndex = string.find(lPath, "/", lSlashIndex+1)
+        print(lSlashIndex, lParentPath, lDirNameSearch)
+    end
+
+    -- Check that parent directory exists and new directory does not
+    if fs.is_dir(lParentPath) then--and string.find(fs.readdir(lParentPath), lDirNameSearch, 1, true) == nil then
+        for _, entryName in pairs(fs.readdir(lParentPath)) do
+            if entryName == lDirNameSearch then
+                gErrorQueue.Add(-222)
+                return
+            end 
+        end
+        fs.mkdir(lPath)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- MMEMory:RDIRectory <folder>
+gCurrentRoot = gCommandTree["MMEMORY"]["RDIRECTORY"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFilePath}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lPath = lParameters[1]
+    -- Ensure path is absolute
+    if string.sub(lPath, 1, 6) ~= "/usb1/" then
+        lPath = fs.cwd() .. "/" .. lPath
+    end
+    -- Check that directory exists and is empty
+    if fs.is_dir(lPath) then
+        if fs.readdir(lPath) ~= nil then
+            gErrorQueue.Add(-222)
+            return
+        end 
+        fs.rmdir(lPath)
+    else
+        gErrorQueue.Add(-222)
+    end
+end
+-- MMEMory:STORe:DATA RDG_STORE, <file>
+gCurrentRoot = gCommandTree["MMEMORY"]["STORE"]["DATA"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    {
+        mParse = function(lParameter)
+            if string.upper(lParameter) == "RDG_STORE" then
+                return lParameter
+            end
+            return nil, -104
+        end
+    },
+    {
+        mParse = function (lParameter)
+            if not((string.byte(lParameter, 1) == gCharCodes.mSingleQuote or string.byte(lParameter, 1) == gCharCodes.mDoubleQuote)
+            and string.byte(lParameter, 1) == string.byte(lParameter, -1)) then
+                return nil, -104
+            end
+            return gParserTable.ParseFileFolderName(string.sub(lParameter, 2, -2))
+        end
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lFileName = lParameters[2]
+    if string.sub(lFileName, -4, -1) ~= ".csv" then
+        lFileName = lFileName .. ".csv"
+    end
+    lFileName = fs.cwd() .. "/" .. lFileName
+    local lStart, _ = FindStartIndex()
+    buffer.save(gReadingMemory.readingBuffer, lFileName, buffer.COL_BRIEF, lStart, gReadingMemory.readingBuffer.endindex)
 end
 
 ------------------------------------------------------------------------------
