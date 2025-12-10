@@ -4073,10 +4073,29 @@ Engine34461A = function ()
                 gTriggerModel.EndTriggerModel()
             end
             lLastTMState = lTMState
+            -- Check for 6500 Errors/Warnings and return to user
+            while eventlog.getcount() > 0 do
+                local eventNumber, message, severity, nodeID, timeSeconds, timeNanoSeconds = eventlog.next()
+                if severity < 3 then 
+                    -- Beep on error
+                    if gInstrumentState.General.Beeper_State.value == gInstrumentAttributes.Limit_Beeper.ON then
+                        beeper.beep(0.15, 340)
+                    end
+                    if gDisplayErrors then
+                        if gErrorQueue.lDisplay then
+                            display.delete(gErrorQueue.lDisplay)
+                        end
+                        gErrorQueue.lDisplay = display.prompt(
+                            display.BUTTONS_OK,
+                            eventNumber .. " " .. message
+                        )
+                    end
+                    if gErrorReadback then
+                        print(eventNumber .. " " .. message)
+                    end
+                end
+            end
             delay(0.0003)
-        end
-        if gDEVMODE and eventlog.getcount() > 0 then
-            print(eventlog.next())
         end
         --collectgarbage()
     end
@@ -4248,11 +4267,11 @@ UpdateStatusModel = function ()
         StatusModel.ClearCondition(quesStatus, 15)
     end
     -- Update Standard Event Register
-    -- (OPC (Bit 0), QYE (Bit 2), PON (Bit 7) bits are directly read from 6500 status model)
+    -- (OPC (Bit 0), PON (Bit 7) bits are directly read from 6500 status model)
     local lEvents
     lEvents = gAccessors.mGetStatusStandardEvent()
     if lEvents > 0 then
-        StatusModel.SetEvents(standardEvent, bit.bitand(lEvents, 133))
+        StatusModel.SetEvents(standardEvent, bit.bitand(lEvents, 129))
     end
 end
 
@@ -5753,9 +5772,9 @@ if gDEVMODE then
         end
         file.close(fptr)
     end
-    gPrintCMDTree("", gCommandTree)
-    print("DONE")
-    exit()
+    --gPrintCMDTree("", gCommandTree)
+    --print("DONE")
+    --exit()
 end
 
 --============================================================================
@@ -7728,6 +7747,7 @@ end
 --
 -----------------------------------------------------------------------------
 
+-- ROUTe:TERMinals?
 gCurrentRoot = gCommandTree["ROUTE"]["TERMINALS"]
 gCurrentRoot.mQuery.mExecute = function()
     local lTerminals = gAccessors.mGetTerminals()
@@ -9032,6 +9052,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempReference}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
     local lReference = lParameters[1]
     if lReference >= gOperatingBoundaries.Temperature.TranRef.min and
     lReference <= gOperatingBoundaries.Temperature.TranRef.max then
@@ -9057,6 +9078,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempReference}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
     local lReference = lParameters[1]
     if lReference >= gOperatingBoundaries.Temperature.TranRef.min and
     lReference <= gOperatingBoundaries.Temperature.TranRef.max then
@@ -9082,6 +9104,7 @@ end
 gCurrentRoot = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["TYPE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTranType}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
     local lType = lParameters[1]
     gInstrumentState.Temperature.Transducer_Type.value = lType
     if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature then
@@ -10234,15 +10257,18 @@ end
 --
 -----------------------------------------------------------------------------
 
+-- UNIT:TEMPerature {C|F|K}
 gCurrentRoot = gCommandTree["UNIT"]["TEMPERATURE"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseTempUnit}
 gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gReadingMemory.clear()
     local lUnit = lParameters[1]
     gInstrumentState.Temperature.Unit.value = lUnit
     if gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.Temperature then
         gInstrumentState.Temperature.Unit.setter(gInstrumentState.Temperature.Unit.value.DMM_Enum)
     end
 end
+-- UNIT:TEMPerature?
 gCurrentRoot.mQuery.mExecute = function()
     print(gInstrumentState.Temperature.Unit.value.shorthand)
 end
