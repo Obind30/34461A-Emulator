@@ -4654,6 +4654,13 @@ gCommandTree =
         {
             mCommand = {},
         },
+        ["LOAD"] =
+        {
+            ["STATE"] =
+            {
+                mCommand = {},
+            },
+        },
         ["MDIRECTORY"] =
         {
             mCommand = {},
@@ -4668,7 +4675,18 @@ gCommandTree =
             {
                 mCommand = {},
             },
+            ["STATE"] =
+            {
+                mCommand = {},
+            },
         },
+        ["STATE"] =
+        {
+            ["VALID"] =
+            {
+                mQuery = {},
+            },
+        }
     },
     ["R"] =
     {
@@ -5426,6 +5444,9 @@ gCommandTree["MMEMORY"]["DEL"]                          = gCommandTree["MMEMORY"
 gCommandTree["MMEMORY"]["MDIR"]                         = gCommandTree["MMEMORY"]["MDIRECTORY"]
 gCommandTree["MMEMORY"]["RDIR"]                         = gCommandTree["MMEMORY"]["RDIRECTORY"]
 gCommandTree["MMEMORY"]["STOR"]                         = gCommandTree["MMEMORY"]["STORE"]
+gCommandTree["MMEMORY"]["STORE"]["STAT"]                = gCommandTree["MMEMORY"]["STORE"]["STATE"]
+gCommandTree["MMEMORY"]["STAT"]                         = gCommandTree["MMEMORY"]["STATE"]
+gCommandTree["MMEMORY"]["STATE"]["VAL"]                 = gCommandTree["MMEMORY"]["STATE"]["VALID"]
 
 gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
 gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
@@ -7451,6 +7472,47 @@ gCurrentRoot.mQuery.mExecute = function()
     lPath = "USB:\\"..string.sub(string.gsub(lPath, "/", "\\"), 7)
     print(lPath)
 end
+-- MMEMory:LOAD:STATe <file>[, AUTO]
+gCurrentRoot = gCommandTree["MMEMORY"]["LOAD"]["STATE"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    gParserTable.mParseString,
+    {
+        mParse = function(lParameter)
+            if string.upper(lParameter) == "AUTO" then
+                return lParameter
+            end
+            return nil, -104
+        end,
+        mOptional = true,
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lScriptName = lParameters[1]
+
+    local lDirNameSearch = lScriptName
+    local lSlashIndex = string.find(lScriptName, "\\")
+    while lSlashIndex ~= nil do
+        lDirNameSearch = string.sub(lScriptName, lSlashIndex+1, -1)
+        lSlashIndex = string.find(lScriptName, "\\", lSlashIndex+1)
+    end
+
+    lScriptName = lDirNameSearch
+    if string.len(lScriptName) >= 5 and string.sub(lScriptName, -4, -1) == ".sta" then 
+        lScriptName = string.sub(lScriptName, 1, -5) 
+    end
+    if lParameters[2] then
+        lScriptName = "autoexec"
+    end
+    for name in script.catalog() do
+        if name == lScriptName then
+            lScriptName = script.load(lScriptName)
+            lScriptName.run()
+            return
+        end
+    end
+    gErrorQueue.Add(-222)
+end
 -- MMEMory:MDIRectory <folder>
 gCurrentRoot = gCommandTree["MMEMORY"]["MDIRECTORY"]
 gCurrentRoot.mCommand.mParameters = {gParserTable.mParseFilePath}
@@ -7471,7 +7533,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
         end
         lDirNameSearch = string.sub(lPath, lSlashIndex+1, -1)
         lSlashIndex = string.find(lPath, "/", lSlashIndex+1)
-        print(lSlashIndex, lParentPath, lDirNameSearch)
     end
 
     -- Check that parent directory exists and new directory does not
@@ -7537,6 +7598,80 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lFileName = fs.cwd() .. "/" .. lFileName
     local lStart, _ = FindStartIndex()
     buffer.save(gReadingMemory.readingBuffer, lFileName, buffer.COL_BRIEF, lStart, gReadingMemory.readingBuffer.endindex)
+end
+-- MMEMory:STORe:STATe <file>[, AUTO]
+gCurrentRoot = gCommandTree["MMEMORY"]["STORE"]["STATE"]
+gCurrentRoot.mCommand.mParameters = 
+{
+    gParserTable.mParseString,
+    {
+        mParse = function(lParameter)
+            if string.upper(lParameter) == "AUTO" then
+                return lParameter
+            end
+            return nil, -104
+        end,
+        mOptional = true,
+    }
+}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lFileName = lParameters[1]
+
+    local lDirNameSearch = lFileName
+    local lSlashIndex = string.find(lFileName, "\\")
+    while lSlashIndex ~= nil do
+        lDirNameSearch = string.sub(lFileName, lSlashIndex+1, -1)
+        lSlashIndex = string.find(lFileName, "\\", lSlashIndex+1)
+    end
+
+    lFileName = lDirNameSearch
+    if string.len(lFileName) >= 5 and string.sub(lFileName, -4, -1) == ".sta" then 
+        lFileName = string.sub(lFileName, 1, -5) 
+    end
+    if lParameters[2] then
+        lFileName = "autoexec"
+    end
+    createconfigscript(lFileName)
+end
+-- MMEMory:STATe:VALid? <file>[, AUTO]
+gCurrentRoot = gCommandTree["MMEMORY"]["STATE"]["VALID"]
+gCurrentRoot.mQuery.mParameters = 
+{
+    gParserTable.mParseString,
+    {
+        mParse = function(lParameter)
+            if string.upper(lParameter) == "AUTO" then
+                return lParameter
+            end
+            return nil, -104
+        end,
+        mOptional = true,
+    }
+}
+gCurrentRoot.mQuery.mExecute = function(lParameters)
+    local lScriptName = lParameters[1]
+
+    local lDirNameSearch = lScriptName
+    local lSlashIndex = string.find(lScriptName, "\\")
+    while lSlashIndex ~= nil do
+        lDirNameSearch = string.sub(lScriptName, lSlashIndex+1, -1)
+        lSlashIndex = string.find(lScriptName, "\\", lSlashIndex+1)
+    end
+
+    lScriptName = lDirNameSearch
+    if string.len(lScriptName) >= 5 and string.sub(lScriptName, -4, -1) == ".sta" then 
+        lScriptName = string.sub(lScriptName, 1, -5) 
+    end
+    if lParameters[2] then
+        lScriptName = "autoexec"
+    end
+    for name in script.catalog() do
+        if name == lScriptName then
+            print(1)
+            return
+        end
+    end
+    print(0)
 end
 
 ------------------------------------------------------------------------------
