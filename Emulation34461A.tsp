@@ -195,13 +195,11 @@ local gDisplayTextVar = nil
 
 local gNan = 9.91e37
 local gInf = 9.90e37
-local gEpsilon = 5e-7
 
 local gLastMeasurement =
 {
     value = gNan,
     index = 1,
-    -- Make sure to update this accordingly
     units = "VDC",
 }
 
@@ -271,9 +269,6 @@ gAccessors.mSetLimitAudible         = makesetter(gLimit, "audible")
 
 gAccessors.mGetLightstate           = makegetter(display, "lightstate")
 gAccessors.mSetLightstate           = makesetter(display, "lightstate")
-
---gAccessors.mGetGPIBAddress          = makegetter(gpib, "address")
---gAccessors.mSetGPIBAddress          = makesetter(gpib, "address")
 
 --============================================================================
 --
@@ -2433,7 +2428,7 @@ gParserTable.ParseParameterNumList = function (lParameter)
     while lIndex <= lCount do
         lList[lIndex], lError = gParserTable.ParseParameterIntegerNRf(lList[lIndex])
         if lError then
-            return nil, -260
+            return nil, -500
         end
         lIndex = lIndex + 1
     end
@@ -3676,7 +3671,7 @@ Parse4882 = function (lTextMixedCase, lText, lStart)
                         else
                             lIndex2, lIndex3 = string.find(lText, "^%s*$", lIndex)
                             if not lIndex2 then
-                               gErrorQueue.Add(-170)
+                               gErrorQueue.Add(-500)
                             end
                             lIndex = lLength + 1
                         end
@@ -4481,6 +4476,10 @@ gCommandTree =
         {
             mCommand = {},
         },
+        ["RESISTANCE"] =
+        {
+            mCommand = {},
+        },
         ["VOLTAGE"] =
         {
             ["AC"] =
@@ -4491,10 +4490,6 @@ gCommandTree =
             {
                 mCommand = {},
             },
-        },
-        ["RESISTANCE"] =
-        {
-            mCommand = {},
         },
         ["FRESISTANCE"] =
         {
@@ -5346,17 +5341,24 @@ gCommandTree =
     },
 }
 
--- ADD ABBREVIATION ALIASES HERE
+------------------------------------------------------------------------------
+--
+--  Command Abbreviations
+--
+--  This is where all command abbreviations are assigned and alaised.
+--
+------------------------------------------------------------------------------
+
 gCommandTree["ABOR"]                                    = gCommandTree["ABORT"]
-gCommandTree["CONF"]                                    = gCommandTree["CONFIGURE"]
 gCommandTree["FET"]                                     = gCommandTree["FETCH"]
-gCommandTree["INIT"]                                    = gCommandTree["INITIATE"]
-gCommandTree["INITIATE"]["IMMEDIATE"].mQuery            = gCommandTree["INITIATE"].mQuery
-gCommandTree["INITIATE"]["IMMEDIATE"].mCommand          = gCommandTree["INITIATE"].mCommand
-gCommandTree["INITIATE"]["IMM"]                         = gCommandTree["INITIATE"]["IMMEDIATE"]
+gCommandTree["UNIT"]["TEMP"]                            = gCommandTree["UNIT"]["TEMPERATURE"]
 
+------------------------------------------------------------------------------
+--
+--  CALCulate Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["CALC"]                                    = gCommandTree["CALCULATE"]
-
 gCommandTree["CALCULATE"]["AVER"]                       = gCommandTree["CALCULATE"]["AVERAGE"]
 gCommandTree["CALCULATE"]["AVERAGE"]["AVER"]            = gCommandTree["CALCULATE"]["AVERAGE"]["AVERAGE"]
 gCommandTree["CALCULATE"]["AVERAGE"]["CLE"]             = gCommandTree["CALCULATE"]["AVERAGE"]["CLEAR"]
@@ -5399,6 +5401,12 @@ gCommandTree["CALCULATE"]["SCALE"].mCommand             = gCommandTree["CALCULAT
 gCommandTree["CALCULATE"]["SCALE"].mQuery               = gCommandTree["CALCULATE"]["SCALE"]["STATE"].mQuery
 gCommandTree["CALCULATE"]["SCALE"]["STAT"]              = gCommandTree["CALCULATE"]["SCALE"]["STATE"]
 
+------------------------------------------------------------------------------
+--
+--  CONFigure Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["CONF"]                                    = gCommandTree["CONFIGURE"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["DC"]              = gCommandTree["CONFIGURE"]["DC"]
 gCommandTree["CONFIGURE"]["VOLTAGE"]["AC"]              = gCommandTree["CONFIGURE"]["AC"]
 gCommandTree["CONFIGURE"]["VOLT"]                       = gCommandTree["CONFIGURE"]["VOLTAGE"]
@@ -5417,6 +5425,21 @@ gCommandTree["CONFIGURE"]["TEMP"]                       = gCommandTree["CONFIGUR
 gCommandTree["CONFIGURE"]["FREQ"]                       = gCommandTree["CONFIGURE"]["FREQUENCY"]
 gCommandTree["CONFIGURE"]["PER"]                        = gCommandTree["CONFIGURE"]["PERIOD"]
 
+------------------------------------------------------------------------------
+--
+--  DATA Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["DATA"]["POIN"]                            = gCommandTree["DATA"]["POINTS"]
+gCommandTree["DATA"]["POINTS"]["EVEN"]                  = gCommandTree["DATA"]["POINTS"]["EVENT"]
+gCommandTree["DATA"]["POINTS"]["EVENT"]["THR"]          = gCommandTree["DATA"]["POINTS"]["EVENT"]["THRESHOLD"]
+gCommandTree["DATA"]["REM"]                             = gCommandTree["DATA"]["REMOVE"]
+
+------------------------------------------------------------------------------
+--
+--  DISPlay Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["DISP"]                                    = gCommandTree["DISPLAY"]
 gCommandTree["DISPLAY"]["STAT"]                         = gCommandTree["DISPLAY"]["STATE"]
 gCommandTree["DISPLAY"].mCommand                        = gCommandTree["DISPLAY"]["STATE"].mCommand
@@ -5425,6 +5448,21 @@ gCommandTree["DISPLAY"]["TEXT"]["CLE"]                  = gCommandTree["DISPLAY"
 gCommandTree["DISPLAY"]["TEXT"].mCommand                = gCommandTree["DISPLAY"]["TEXT"]["DATA"].mCommand
 gCommandTree["DISPLAY"]["TEXT"].mQuery                  = gCommandTree["DISPLAY"]["TEXT"]["DATA"].mQuery
 
+------------------------------------------------------------------------------
+--
+--  INITiate Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["INIT"]                                    = gCommandTree["INITIATE"]
+gCommandTree["INITIATE"]["IMMEDIATE"].mQuery            = gCommandTree["INITIATE"].mQuery
+gCommandTree["INITIATE"]["IMMEDIATE"].mCommand          = gCommandTree["INITIATE"].mCommand
+gCommandTree["INITIATE"]["IMM"]                         = gCommandTree["INITIATE"]["IMMEDIATE"]
+
+------------------------------------------------------------------------------
+--
+--  MEASure Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["MEAS"]                                    = gCommandTree["MEASURE"]
 gCommandTree["MEASURE"]["VOLTAGE"]["DC"]                = gCommandTree["MEASURE"]["DC"]
 gCommandTree["MEASURE"]["VOLTAGE"]["AC"]                = gCommandTree["MEASURE"]["AC"]
@@ -5444,11 +5482,17 @@ gCommandTree["MEASURE"]["TEMP"]                         = gCommandTree["MEASURE"
 gCommandTree["MEASURE"]["FREQ"]                         = gCommandTree["MEASURE"]["FREQUENCY"]
 gCommandTree["MEASURE"]["PER"]                          = gCommandTree["MEASURE"]["PERIOD"]
 
+------------------------------------------------------------------------------
+--
+--  MMEMory Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["MMEM"]                                    = gCommandTree["MMEMORY"]
 gCommandTree["MMEMORY"]["CAT"]                          = gCommandTree["MMEMORY"]["CATALOG"]
 gCommandTree["MMEMORY"]["CATALOG"].mQuery               = gCommandTree["MMEMORY"]["CATALOG"]["ALL"].mQuery
 gCommandTree["MMEMORY"]["CDIR"]                         = gCommandTree["MMEMORY"]["CDIRECTORY"]
 gCommandTree["MMEMORY"]["DEL"]                          = gCommandTree["MMEMORY"]["DELETE"]
+gCommandTree["MMEMORY"]["LOAD"]["STAT"]                 = gCommandTree["MMEMORY"]["LOAD"]["STATE"]
 gCommandTree["MMEMORY"]["MDIR"]                         = gCommandTree["MMEMORY"]["MDIRECTORY"]
 gCommandTree["MMEMORY"]["RDIR"]                         = gCommandTree["MMEMORY"]["RDIRECTORY"]
 gCommandTree["MMEMORY"]["STOR"]                         = gCommandTree["MMEMORY"]["STORE"]
@@ -5456,14 +5500,20 @@ gCommandTree["MMEMORY"]["STORE"]["STAT"]                = gCommandTree["MMEMORY"
 gCommandTree["MMEMORY"]["STAT"]                         = gCommandTree["MMEMORY"]["STATE"]
 gCommandTree["MMEMORY"]["STATE"]["VAL"]                 = gCommandTree["MMEMORY"]["STATE"]["VALID"]
 
+------------------------------------------------------------------------------
+--
+--  SAMPle Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["SAMP"]                                    = gCommandTree["SAMPLE"]
 gCommandTree["SAMPLE"]["COUN"]                          = gCommandTree["SAMPLE"]["COUNT"]
 
+------------------------------------------------------------------------------
+--
+--  SENSe:CAPacitance Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["SENS"]                                    = gCommandTree["SENSE"]
-
-gCommandTree["FUNCTION"]                                = gCommandTree["SENSE"]["FUNCTION"]
-gCommandTree["FUNC"]                                    = gCommandTree["SENSE"]["FUNCTION"]
-
 gCommandTree["CAPACITANCE"]                             = gCommandTree["SENSE"]["CAPACITANCE"]
 gCommandTree["CAP"]                                     = gCommandTree["SENSE"]["CAPACITANCE"]
 gCommandTree["SENSE"]["CAP"]                            = gCommandTree["SENSE"]["CAPACITANCE"]
@@ -5473,6 +5523,11 @@ gCommandTree["SENSE"]["CAPACITANCE"]["NULL"].mCommand   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["CAPACITANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["CAPACITANCE"]["NULL"]["STATE"].mQuery
 gCommandTree["SENSE"]["CAPACITANCE"]["RANG"]            = gCommandTree["SENSE"]["CAPACITANCE"]["RANGE"]
 
+------------------------------------------------------------------------------
+--
+--  SENSe:CURRent Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["CURRENT"]                                 = gCommandTree["SENSE"]["CURRENT"]
 gCommandTree["CURR"]                                    = gCommandTree["SENSE"]["CURRENT"]
 gCommandTree["SENSE"]["CURR"]                           = gCommandTree["SENSE"]["CURRENT"]
@@ -5492,10 +5547,67 @@ gCommandTree["SENSE"]["CURRENT"]["DC"]["NULL"].mQuery   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["CURRENT"]["DC"]["TERM"]          = gCommandTree["SENSE"]["CURRENT"]["DC"]["TERMINALS"]
 gCommandTree["SENSE"]["CURRENT"]["AC"]["TERM"]          = gCommandTree["SENSE"]["CURRENT"]["AC"]["TERMINALS"]
 
+------------------------------------------------------------------------------
+--
+--  SENSe:FREQuency Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["FREQUENCY"]                               = gCommandTree["SENSE"]["FREQUENCY"]
+gCommandTree["FREQ"]                                    = gCommandTree["SENSE"]["FREQUENCY"]
+gCommandTree["SENSE"]["FREQ"]                           = gCommandTree["SENSE"]["FREQUENCY"]
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STAT"]      = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VAL"]       = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"].mCommand     = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["FREQUENCY"]["NULL"].mQuery       = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"].mQuery
+
+------------------------------------------------------------------------------
+--
+--  SENSe:FRESistance Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["FRESISTANCE"]                                     = gCommandTree["SENSE"]["FRESISTANCE"]
+gCommandTree["FRES"]                                            = gCommandTree["SENSE"]["FRESISTANCE"]
+gCommandTree["SENSE"]["FRES"]                                   = gCommandTree["SENSE"]["FRESISTANCE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STAT"]            = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VAL"]             = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mCommand           = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mQuery             = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mQuery
+gCommandTree["SENSE"]["FRESISTANCE"]["RANG"]                    = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NPLC"]                    = gCommandTree["SENSE"]["RESISTANCE"]["NPLC"] 
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"]           = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]           = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]["AUTO"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]["AUTO"]
+gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]["AUTO"]           = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]["AUTO"]
+
+------------------------------------------------------------------------------
+--
+--  SENSe:FUNCtion Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["FUNCTION"]                                = gCommandTree["SENSE"]["FUNCTION"]
+gCommandTree["FUNC"]                                    = gCommandTree["SENSE"]["FUNCTION"]
 gCommandTree["SENSE"]["FUNC"]                           = gCommandTree["SENSE"]["FUNCTION"]
 gCommandTree["SENSE"]["FUNCTION"].mCommand              = gCommandTree["SENSE"]["FUNCTION"]["ON"].mCommand
 gCommandTree["SENSE"]["FUNCTION"].mQuery                = gCommandTree["SENSE"]["FUNCTION"]["ON"].mQuery
 
+------------------------------------------------------------------------------
+--
+--  SENSe:PERiod Subsystem
+--
+------------------------------------------------------------------------------
+gCommandTree["PERIOD"]                                  = gCommandTree["SENSE"]["PERIOD"]
+gCommandTree["PER"]                                     = gCommandTree["SENSE"]["PERIOD"]
+gCommandTree["SENSE"]["PER"]                            = gCommandTree["SENSE"]["PERIOD"]
+gCommandTree["SENSE"]["PERIOD"]["NULL"]["STAT"]         = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"]
+gCommandTree["SENSE"]["PERIOD"]["NULL"]["VAL"]          = gCommandTree["SENSE"]["PERIOD"]["NULL"]["VALUE"]
+gCommandTree["SENSE"]["PERIOD"]["NULL"].mCommand        = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"].mCommand
+gCommandTree["SENSE"]["PERIOD"]["NULL"].mQuery          = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"].mQuery
+
+------------------------------------------------------------------------------
+--
+--  SENSe:RESistance Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["RESISTANCE"]                              = gCommandTree["SENSE"]["RESISTANCE"]
 gCommandTree["RES"]                                     = gCommandTree["SENSE"]["RESISTANCE"]
 gCommandTree["SENSE"]["RES"]                            = gCommandTree["SENSE"]["RESISTANCE"]
@@ -5505,37 +5617,11 @@ gCommandTree["SENSE"]["RESISTANCE"]["NULL"].mCommand    = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["RESISTANCE"]["NULL"].mQuery      = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"].mQuery
 gCommandTree["SENSE"]["RESISTANCE"]["RANG"]             = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]
 
-gCommandTree["SENSE"]["FRESISTANCE"]["NPLC"]            = gCommandTree["SENSE"]["RESISTANCE"]["NPLC"] 
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["STATE"]
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]["AUTO"]   = gCommandTree["SENSE"]["RESISTANCE"]["NULL"]["VALUE"]["AUTO"]
-gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]["AUTO"]   = gCommandTree["SENSE"]["RESISTANCE"]["RANGE"]["AUTO"]
-
-gCommandTree["FRESISTANCE"]                             = gCommandTree["SENSE"]["FRESISTANCE"]
-gCommandTree["FRES"]                                    = gCommandTree["SENSE"]["FRESISTANCE"]
-gCommandTree["SENSE"]["FRES"]                           = gCommandTree["SENSE"]["FRESISTANCE"]
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STAT"]    = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"]
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VAL"]     = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["VALUE"]
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mCommand   = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mCommand
-gCommandTree["SENSE"]["FRESISTANCE"]["NULL"].mQuery     = gCommandTree["SENSE"]["FRESISTANCE"]["NULL"]["STATE"].mQuery
-gCommandTree["SENSE"]["FRESISTANCE"]["RANG"]            = gCommandTree["SENSE"]["FRESISTANCE"]["RANGE"]
-
-gCommandTree["FREQUENCY"]                               = gCommandTree["SENSE"]["FREQUENCY"]
-gCommandTree["FREQ"]                                    = gCommandTree["SENSE"]["FREQUENCY"]
-gCommandTree["SENSE"]["FREQ"]                           = gCommandTree["SENSE"]["FREQUENCY"]
-gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STAT"]      = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"]
-gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VAL"]       = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["VALUE"]
-gCommandTree["SENSE"]["FREQUENCY"]["NULL"].mCommand     = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"].mCommand
-gCommandTree["SENSE"]["FREQUENCY"]["NULL"].mQuery       = gCommandTree["SENSE"]["FREQUENCY"]["NULL"]["STATE"].mQuery
-
-gCommandTree["PERIOD"]                                  = gCommandTree["SENSE"]["PERIOD"]
-gCommandTree["PER"]                                     = gCommandTree["SENSE"]["PERIOD"]
-gCommandTree["SENSE"]["PER"]                            = gCommandTree["SENSE"]["PERIOD"]
-gCommandTree["SENSE"]["PERIOD"]["NULL"]["STAT"]         = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"]
-gCommandTree["SENSE"]["PERIOD"]["NULL"]["VAL"]          = gCommandTree["SENSE"]["PERIOD"]["NULL"]["VALUE"]
-gCommandTree["SENSE"]["PERIOD"]["NULL"].mCommand        = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"].mCommand
-gCommandTree["SENSE"]["PERIOD"]["NULL"].mQuery          = gCommandTree["SENSE"]["PERIOD"]["NULL"]["STATE"].mQuery
-
+------------------------------------------------------------------------------
+--
+--  SENSe:TEMPerature Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["TEMPERATURE"]                             = gCommandTree["SENSE"]["TEMPERATURE"]
 gCommandTree["TEMP"]                                    = gCommandTree["SENSE"]["TEMPERATURE"]
 gCommandTree["SENSE"]["TEMP"]                           = gCommandTree["SENSE"]["TEMPERATURE"]
@@ -5548,11 +5634,16 @@ gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RES"]               
 gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"].mCommand   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"].mCommand
 gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"].mQuery     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"].mQuery
 gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REF"]     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["FRTD"]["RESISTANCE"]["REFERENCE"]
-gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RES"]                   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]
-gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"].mCommand   = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"].mCommand
-gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"].mQuery     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"].mQuery
-gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REF"]     = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RES"]                    = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"].mCommand    = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"].mCommand
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"].mQuery      = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"].mQuery
+gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REF"]      = gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["RTD"]["RESISTANCE"]["REFERENCE"]
 
+------------------------------------------------------------------------------
+--
+--  SENSe:VOLTage Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["VOLTAGE"]                                 = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["VOLT"]                                    = gCommandTree["SENSE"]["VOLTAGE"]
 gCommandTree["SENSE"]["VOLT"]                           = gCommandTree["SENSE"]["VOLTAGE"]
@@ -5570,11 +5661,11 @@ gCommandTree["SENSE"]["VOLTAGE"]["AC"]["NULL"].mQuery   = gCommandTree["SENSE"][
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"].mCommand = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["STATE"].mCommand
 gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"].mQuery   = gCommandTree["SENSE"]["VOLTAGE"]["DC"]["NULL"]["STATE"].mQuery
 
-gCommandTree["DATA"]["POIN"]                            = gCommandTree["DATA"]["POINTS"]
-gCommandTree["DATA"]["POINTS"]["EVEN"]                  = gCommandTree["DATA"]["POINTS"]["EVENT"]
-gCommandTree["DATA"]["POINTS"]["EVENT"]["THR"]          = gCommandTree["DATA"]["POINTS"]["EVENT"]["THRESHOLD"]
-gCommandTree["DATA"]["REM"]                             = gCommandTree["DATA"]["REMOVE"]
-
+------------------------------------------------------------------------------
+--
+--  STATus Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["STAT"]                                    = gCommandTree["STATUS"]
 gCommandTree["STATUS"]["OPER"]                          = gCommandTree["STATUS"]["OPERATION"]
 gCommandTree["STATUS"]["OPERATION"]["COND"]             = gCommandTree["STATUS"]["OPERATION"]["CONDITION"]
@@ -5588,6 +5679,11 @@ gCommandTree["STATUS"]["QUESTIONABLE"]["ENAB"]          = gCommandTree["STATUS"]
 gCommandTree["STATUS"]["QUESTIONABLE"]["EVEN"]          = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"]
 gCommandTree["STATUS"]["QUESTIONABLE"].mQuery           = gCommandTree["STATUS"]["QUESTIONABLE"]["EVENT"].mQuery
 
+------------------------------------------------------------------------------
+--
+--  SYSTem Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["SYST"]                                    = gCommandTree["SYSTEM"]
 gCommandTree["SYSTEM"]["BEEP"]                          = gCommandTree["SYSTEM"]["BEEPER"]
 gCommandTree["SYSTEM"]["BEEPER"].mCommand               = gCommandTree["SYSTEM"]["BEEPER"]["IMMEDIATE"].mCommand
@@ -5611,16 +5707,24 @@ gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["SMAS"]    = gCommandTree["SYSTEM"]
 gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]["PROM"]  = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]["PROMPT"]
 gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELN"]    = gCommandTree["SYSTEM"]["COMMUNICATE"]["LAN"]["TELNET"]
 
+------------------------------------------------------------------------------
+--
+--  ROUTe Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["ROUT"]                                    = gCommandTree["ROUTE"]
 gCommandTree["ROUTE"]["TERM"]                           = gCommandTree["ROUTE"]["TERMINALS"]
 
+------------------------------------------------------------------------------
+--
+--  TRIGger Subsystem
+--
+------------------------------------------------------------------------------
 gCommandTree["TRIG"]                                    = gCommandTree["TRIGGER"]
 gCommandTree["TRIGGER"]["COUN"]                         = gCommandTree["TRIGGER"]["COUNT"]
 gCommandTree["TRIGGER"]["DEL"]                          = gCommandTree["TRIGGER"]["DELAY"]
 gCommandTree["TRIGGER"]["SLOP"]                         = gCommandTree["TRIGGER"]["SLOPE"]
 gCommandTree["TRIGGER"]["SOUR"]                         = gCommandTree["TRIGGER"]["SOURCE"]
-
-gCommandTree["UNIT"]["TEMP"]                            = gCommandTree["UNIT"]["TEMPERATURE"]
 
 -- DEV function
 if gDEVMODE then
@@ -5649,9 +5753,9 @@ if gDEVMODE then
         end
         file.close(fptr)
     end
-    --gPrintCMDTree("", gCommandTree)
-    --print("DONE")
-    --exit()
+    gPrintCMDTree("", gCommandTree)
+    print("DONE")
+    exit()
 end
 
 --============================================================================
@@ -5672,176 +5776,213 @@ end
 
 local lErrors =
 {
-    -- Error Events
-    [-440] = {mState = true, mCode = "-440", mStatusBit = 2, mMessage = '-440,"Query UNTERMINATED after indefinite response"' },
-    [-430] = {mState = true, mCode = "-430", mStatusBit = 2, mMessage = '-430,"Query DEADLOCKED"' },
-    [-420] = {mState = true, mCode = "-420", mStatusBit = 2, mMessage = '-420,"Query UNTERMINATED"' },
-    [-410] = {mState = true, mCode = "-410", mStatusBit = 2, mMessage = '-410,"Query INTERRUPTED"' },
-    [-363] = {mState = true, mCode = "-363", mStatusBit = 3, mMessage = '-363,"Input buffer overrun"' },
-    [-362] = {mState = true, mCode = "-362", mStatusBit = 3, mMessage = '-362,"Framing error in program message"' },
-    [-361] = {mState = true, mCode = "-361", mStatusBit = 3, mMessage = '-361,"Parity error in program message"' },
-    [-360] = {mState = true, mCode = "-360", mStatusBit = 3, mMessage = '-360,"Communications error"' },
-    [-350] = {mState = true, mCode = "-350", mStatusBit = 3, mMessage = '-350,"Queue overflow"' },
+    [-500] = {mState = true, mCode = "-500", mStatusBit = 15, mMessage = '-500, "Inactive error number called"'},
+    -- Query Errors (-400)
+    [-440] = {mState = false, mCode = "-440", mStatusBit = 2, mMessage = '-440,"Query UNTERMINATED after indefinite response"' },
+    [-430] = {mState = false, mCode = "-430", mStatusBit = 2, mMessage = '-430,"Query DEADLOCKED"' },
+    [-420] = {mState = false, mCode = "-420", mStatusBit = 2, mMessage = '-420,"Query UNTERMINATED"' },
+    [-410] = {mState = false, mCode = "-410", mStatusBit = 2, mMessage = '-410,"Query INTERRUPTED"' },
+    [-400] = {mState = false, mCode = "-400", mStatusBit = 2, mMessage = '-400,"Query error"'},
 
-    [-330] = {mState = true, mCode = "-330", mStatusBit = 3, mMessage = '-330,"Self-test failed"' },
-    [-314] = {mState = true, mCode = "-314", mStatusBit = 3, mMessage = '-314,"Save/recall memory lost"' },
-    [-315] = {mState = true, mCode = "-315", mStatusBit = 3, mMessage = '-315,"Configuration memory lost"' },
-    [-285] = {mState = true, mCode = "-285", mStatusBit = 4, mMessage = '-285,"Program syntax error"' },
-    [-284] = {mState = true, mCode = "-284", mStatusBit = 4, mMessage = '-284,"Program currently running"' },
-    [-282] = {mState = true, mCode = "-282", mStatusBit = 4, mMessage = '-282,"Illegal program name"' },
-    [-281] = {mState = true, mCode = "-281", mStatusBit = 4, mMessage = '-281,"Cannot create program"' },
-    [-260] = {mState = true, mCode = "-260", mStatusBit = 4, mMessage = '-260,"Expression error"' },
-    [-241] = {mState = true, mCode = "-241", mStatusBit = 4, mMessage = '-241,"Hardware missing"' },
-    [-230] = {mState = true, mCode = "-230", mStatusBit = 4, mMessage = '-230,"Data corrupt or stale"' },
+    -- Device-Specific Errors (-300)
+    [-350] = {mState = false, mCode = "-350", mStatusBit = 3, mMessage = '-350,"Queue overflow"' },
+    [-315] = {mState = false, mCode = "-315", mStatusBit = 3, mMessage = '-315,"Configuration memory lost"' },
+    [-314] = {mState = false, mCode = "-314", mStatusBit = 3, mMessage = '-314,"Save/recall memory lost"' },
+    [-313] = {mState = false, mCode = "-313", mStatusBit = 3, mMessage = '-313,"Calibration memory lost"' },
+    [-310] = {mState = false, mCode = "-310", mStatusBit = 3, mMessage = '-310,"System error"' },
 
-    [-225] = {mState = true, mCode = "-225", mStatusBit = 4, mMessage = '-225,"Out of memory"' },
+    -- Execution Errors (-200)
+    [-292] = {mState = false, mCode = "-292", mStatusBit = 4, mMessage = '-292,"Referenced name does not exist"' },
+    [-257] = {mState = false, mCode = "-257", mStatusBit = 4, mMessage = '-257,"File name error"' },
+    [-256] = {mState = false, mCode = "-256", mStatusBit = 4, mMessage = '-256,"File or folder name not found"' },
+    [-253] = {mState = false, mCode = "-253", mStatusBit = 4, mMessage = '-253,"Corrupt media"' },
+    [-250] = {mState = false, mCode = "-250", mStatusBit = 4, mMessage = '-250,"Mass storage error"' },
+    [-241] = {mState = false, mCode = "-241", mStatusBit = 4, mMessage = '-241,"Hardware missing"' },
+    [-240] = {mState = false, mCode = "-240", mStatusBit = 4, mMessage = '-240,"Hardware error"' },
+    [-231] = {mState = false, mCode = "-231", mStatusBit = 4, mMessage = '-231,"Data questionable; requested sample timing not met"' },
+    [-230] = {mState = false, mCode = "-230", mStatusBit = 4, mMessage = '-230,"Data corrupt or stale"' },
+    [-225] = {mState = false, mCode = "-225", mStatusBit = 4, mMessage = '-225,"Out of memory; measurement data overrun"' },
     [-224] = {mState = true, mCode = "-224", mStatusBit = 4, mMessage = '-224,"Illegal parameter value"' },
-    [-223] = {mState = true, mCode = "-223", mStatusBit = 4, mMessage = '-223,"Too much data"' },
-    [-222] = {mState = true, mCode = "-222", mStatusBit = 4, mMessage = '-222,"Data out of range"' }, --* Changed to match 34461
-    [-221] = {mState = true, mCode = "-221", mStatusBit = 4, mMessage = '-221,"Settings conflict"' },
-    [-220] = {mState = true, mCode = "-220", mStatusBit = 4, mMessage = '-220,"Parameter error"' },
+    [-223] = {mState = false, mCode = "-223", mStatusBit = 4, mMessage = '-223,"Too much data"' },
+    [-222] = {mState = true, mCode = "-222", mStatusBit = 4, mMessage = '-222,"Data out of range"' },
+    [-221] = {mState = false, mCode = "-221", mStatusBit = 4, mMessage = '-221,"Settings conflict"' },
+    [-220] = {mState = false, mCode = "-220", mStatusBit = 4, mMessage = '-220,"Parameter error"' },
+    [-214] = {mState = false, mCode = "-214", mStatusBit = 4, mMessage = '-214,"Trigger deadlock"' },
+    [-213] = {mState = false, mCode = "-213", mStatusBit = 4, mMessage = '-213,"Init ignored"' },
+    [-211] = {mState = false, mCode = "-211", mStatusBit = 4, mMessage = '-211,"Trigger ignored"' },
+    [-210] = {mState = false, mCode = "-210", mStatusBit = 4, mMessage = '-210,"Trigger error"' },
+    [-203] = {mState = false, mCode = "-203", mStatusBit = 4, mMessage = '-203,"Command protected"'},
 
-    [-215] = {mState = true, mCode = "-215", mStatusBit = 4, mMessage = '-215,"Arm deadlock"' },
-    [-214] = {mState = true, mCode = "-214", mStatusBit = 4, mMessage = '-214,"Trigger deadlock"' },
-    [-213] = {mState = true, mCode = "-213", mStatusBit = 4, mMessage = '-213,"Init ignored"' },
-    [-212] = {mState = true, mCode = "-212", mStatusBit = 4, mMessage = '-212,"Arm ignored"' },
-    [-211] = {mState = true, mCode = "-211", mStatusBit = 4, mMessage = '-211,"Trigger ignored"' },
-    [-210] = {mState = true, mCode = "-210", mStatusBit = 4, mMessage = '-210,"Trigger error"' },
-    [-202] = {mState = true, mCode = "-202", mStatusBit = 4, mMessage = '-202,"Settings lost due to rtl"' },
-    [-201] = {mState = true, mCode = "-201", mStatusBit = 4, mMessage = '-201,"Invalid while in local"' },
-    [-200] = {mState = true, mCode = "-200", mStatusBit = 4, mMessage = '-200,"Execution error"' },
-    [-178] = {mState = true, mCode = "-178", mStatusBit = 5, mMessage = '-178,"Expression data not allowed"' },
-    [-171] = {mState = true, mCode = "-171", mStatusBit = 5, mMessage = '-171,"Invalid expression"' },
-    [-170] = {mState = true, mCode = "-170", mStatusBit = 5, mMessage = '-170,"Expression error"' },
-    [-168] = {mState = true, mCode = "-168", mStatusBit = 5, mMessage = '-168,"Block data not allowed"' },
-    [-161] = {mState = true, mCode = "-161", mStatusBit = 5, mMessage = '-161,"Invalid block data"' },
-    [-160] = {mState = true, mCode = "-160", mStatusBit = 5, mMessage = '-160,"Block data error"' },                --
-    [-158] = {mState = true, mCode = "-158", mStatusBit = 5, mMessage = '-158,"String data not allowed"' },
-    [-154] = {mState = true, mCode = "-154", mStatusBit = 5, mMessage = '-154,"String too long"' },
-    [-151] = {mState = true, mCode = "-151", mStatusBit = 5, mMessage = '-151,"Invalid string data"' },
-    [-150] = {mState = true, mCode = "-150", mStatusBit = 5, mMessage = '-150,"String data error"' },               --
-    [-148] = {mState = true, mCode = "-148", mStatusBit = 5, mMessage = '-148,"Character data not allowed"' },
-
-    [-144] = {mState = true, mCode = "-144", mStatusBit = 5, mMessage = '-144,"Character data too long"' },
-    [-141] = {mState = true, mCode = "-141", mStatusBit = 5, mMessage = '-141,"Invalid character data"' },
-    [-140] = {mState = true, mCode = "-140", mStatusBit = 5, mMessage = '-140,"Character data error"' },
-    [-128] = {mState = true, mCode = "-128", mStatusBit = 5, mMessage = '-128,"Numeric data not allowed"' },
-    [-124] = {mState = true, mCode = "-124", mStatusBit = 5, mMessage = '-124,"Too many digits"' },
-
-    [-123] = {mState = true, mCode = "-123", mStatusBit = 5, mMessage = '-123,"Exponent too large"' },
+    -- Command Errors (-100)
+    [-168] = {mState = false, mCode = "-168", mStatusBit = 5, mMessage = '-168,"Block data not allowed"' },
+    [-161] = {mState = false, mCode = "-161", mStatusBit = 5, mMessage = '-161,"Invalid block data"' },
+    [-160] = {mState = true, mCode = "-160", mStatusBit = 5, mMessage = '-160,"Block data error"' },
+    [-158] = {mState = false, mCode = "-158", mStatusBit = 5, mMessage = '-158,"String data not allowed"' },
+    [-151] = {mState = false, mCode = "-151", mStatusBit = 5, mMessage = '-151,"Invalid string data"' },
+    [-150] = {mState = true, mCode = "-150", mStatusBit = 5, mMessage = '-150,"String data error"' },
+    [-148] = {mState = false, mCode = "-148", mStatusBit = 5, mMessage = '-148,"Character data not allowed"' },
+    [-144] = {mState = false, mCode = "-144", mStatusBit = 5, mMessage = '-144,"Character data too long"' },
+    [-141] = {mState = false, mCode = "-141", mStatusBit = 5, mMessage = '-141,"Invalid character data"' },
+    [-140] = {mState = false, mCode = "-140", mStatusBit = 5, mMessage = '-140,"Character data error"' },
+    [-138] = {mState = false, mCode = "-138", mStatusBit = 5, mMessage = '-138,"Suffix not allowed"' },
+    [-134] = {mState = false, mCode = "-134", mStatusBit = 5, mMessage = '-134,"Suffix too long"' },
+    [-131] = {mState = false, mCode = "-131", mStatusBit = 5, mMessage = '-131,"Invalid suffix"' },
+    [-130] = {mState = false, mCode = "-130", mStatusBit = 5, mMessage = '-130,"Suffix Error"' },
+    [-128] = {mState = false, mCode = "-128", mStatusBit = 5, mMessage = '-128,"Numeric data not allowed"' },
+    [-124] = {mState = false, mCode = "-124", mStatusBit = 5, mMessage = '-124,"Too many digits"' },
+    [-123] = {mState = false, mCode = "-123", mStatusBit = 5, mMessage = '-123,"Numeric data error"' },
     [-121] = {mState = true, mCode = "-121", mStatusBit = 5, mMessage = '-121,"Invalid character in number"' },
-    [-120] = {mState = true, mCode = "-120", mStatusBit = 5, mMessage = '-120,"Numeric data error"' },
-    [-114] = {mState = true, mCode = "-114", mStatusBit = 5, mMessage = '-114,"Header suffix out of range"' },
-    [-113] = {mState = true, mCode = "-113", mStatusBit = 5, mMessage = '-113,"Undefined header"' },                --
-
-    [-112] = {mState = true, mCode = "-112", mStatusBit = 5, mMessage = '-112,"Program mnemonic too long"' },
-    [-111] = {mState = true, mCode = "-111", mStatusBit = 5, mMessage = '-111,"Header separator error"' },          --
-    [-110] = {mState = true, mCode = "-110", mStatusBit = 5, mMessage = '-110,"Command header error"' },
-    [-109] = {mState = true, mCode = "-109", mStatusBit = 5, mMessage = '-109,"Missing parameter"' },               --
-    [-108] = {mState = true, mCode = "-108", mStatusBit = 5, mMessage = '-108,"Parameter not allowed"' },           --
-
-    [-105] = {mState = true, mCode = "-105", mStatusBit = 5, mMessage = '-105,"GET not allowed"' },
+    [-120] = {mState = false, mCode = "-120", mStatusBit = 5, mMessage = '-120,"Numeric data error"' },
+    [-114] = {mState = false, mCode = "-114", mStatusBit = 5, mMessage = '-114,"Header suffix out of range"' },
+    [-113] = {mState = true, mCode = "-113", mStatusBit = 5, mMessage = '-113,"Undefined header"' },
+    [-112] = {mState = false, mCode = "-112", mStatusBit = 5, mMessage = '-112,"Program mnemonic too long"' },
+    [-111] = {mState = true, mCode = "-111", mStatusBit = 5, mMessage = '-111,"Header separator error"' },
+    [-110] = {mState = false, mCode = "-110", mStatusBit = 5, mMessage = '-110,"Command header error"' },
+    [-109] = {mState = true, mCode = "-109", mStatusBit = 5, mMessage = '-109,"Missing parameter"' },
+    [-108] = {mState = true, mCode = "-108", mStatusBit = 5, mMessage = '-108,"Parameter not allowed"' },
+    [-105] = {mState = false, mCode = "-105", mStatusBit = 5, mMessage = '-105,"GET not allowed"' },
     [-104] = {mState = true, mCode = "-104", mStatusBit = 5, mMessage = '-104,"Data type error"' },
-    [-103] = {mState = true, mCode = "-103", mStatusBit = 5, mMessage = '-103,"Invalid separator"' },
-    [-102] = {mState = true, mCode = "-102", mStatusBit = 5, mMessage = '-102,"Syntax error"' },                    --
-    [-101] = {mState = true, mCode = "-101", mStatusBit = 5, mMessage = '-101,"Invalid character"' },
-    [-100] = {mState = true, mCode = "-100", mStatusBit = 5, mMessage = '-100,"Command error"' },
+    [-103] = {mState = false, mCode = "-103", mStatusBit = 5, mMessage = '-103,"Invalid separator"' },
+    [-102] = {mState = true, mCode = "-102", mStatusBit = 5, mMessage = '-102,"Syntax error"' },
+    [-101] = {mState = false, mCode = "-101", mStatusBit = 5, mMessage = '-101,"Invalid character"' },
+    [-100] = {mState = false, mCode = "-100", mStatusBit = 5, mMessage = '-100,"Command error"' },
 
-    -- Status Events
-    -- Measurement events:
-    [0]   = {mState = false, mCode = "0", mStatusBit = 15, mMessage = '0,"No error"' },
-    [100] = {mState = false, mCode = "100", mStatusBit = 15, mMessage = '100,"Limit 1 failed"' },
-    [101] = {mState = false, mCode = "101", mStatusBit = 15, mMessage = '101,"Low limit 2 failed"' },
-    [102] = {mState = false, mCode = "102", mStatusBit = 15, mMessage = '102,"High limit 2 failed"' },
-    [103] = {mState = false, mCode = "103", mStatusBit = 15, mMessage = '103,"Low limit 3 failed"' },
-    [104] = {mState = false, mCode = "104", mStatusBit = 15, mMessage = '104,"High limit 3 failed"' },
-    [105] = {mState = false, mCode = "105", mStatusBit = 15, mMessage = '105,"Active limit tests passed"' },
-    [106] = {mState = false, mCode = "106", mStatusBit = 15, mMessage = '106,"Reading available"' },
-    [107] = {mState = false, mCode = "107", mStatusBit = 15, mMessage = '107,"Reading overflow"' },
-    [108] = {mState = false, mCode = "108", mStatusBit = 15, mMessage = '108,"Buffer available"' },
-    [109] = {mState = false, mCode = "109", mStatusBit = 15, mMessage = '109,"Buffer full"' },
-    [110] = {mState = false, mCode = "110", mStatusBit = 15, mMessage = '110,"Limit 4 failed"' },
-    [111] = {mState = false, mCode = "111", mStatusBit = 15, mMessage = '111,"OUTPUT enable asserted"' },
-    [112] = {mState = false, mCode = "112", mStatusBit = 15, mMessage = '112,"Temperature limit exceeded"' },
-    [113] = {mState = false, mCode = "113", mStatusBit = 15, mMessage = '113,"Voltage limit exceeded"' },
-    [114] = {mState = false, mCode = "114", mStatusBit = 15, mMessage = '114,"Source in compliance"' },
+    -- Network Errors (+100)
+    [100] = {mState = false, mCode = "100", mStatusBit = 15, mMessage = '+100,"Network Error"' },
+    [110] = {mState = false, mCode = "110", mStatusBit = 15, mMessage = '+110,"LXI mDNS Error"' },
 
-    -- Standard events:
-    [200] = {mState = false, mCode = "200", mStatusBit = 15, mMessage = '200,"Operation complete"' },
-    [263] = {mState = true,  mCode = "263", mStatusBit = 15, mMessage = '+263, Not able to execute while instrument is measuring"' },
+    -- Instrument Errors (+200)
+    [251] = {mState = true, mCode = "-251", mStatusBit = 15, mMessage = '+251,"Unsupported temperature transducer type"' },
+    [263] = {mState = true, mCode = "-263", mStatusBit = 15, mMessage = '+263,"Not able to execute while instrument is measuring"' },
+    [292] = {mState = true, mCode = "-292", mStatusBit = 15, mMessage = '+292,"State file size error"' },
+    [293] = {mState = true, mCode = "-293", mStatusBit = 15, mMessage = '+293,"State file corrupt"' },
+    [294] = {mState = true, mCode = "-294", mStatusBit = 15, mMessage = '+294,"Preference file size error"' },
+    [295] = {mState = true, mCode = "-295", mStatusBit = 15, mMessage = '+295,"Preference file corrupt"' },
 
-    -- Operation events:
-    [300] = {mState = false, mCode = "300", mStatusBit = 15, mMessage = '300,"Device calibrating"' },
-    [303] = {mState = false, mCode = "303", mStatusBit = 15, mMessage = '303,"Device sweeping"' },
-    [305] = {mState = false, mCode = "305", mStatusBit = 15, mMessage = '305,"Waiting in trigger layer"' },
-    [306] = {mState = false, mCode = "306", mStatusBit = 15, mMessage = '306,"Waiting in arm layer"' },
-    [310] = {mState = false, mCode = "310", mStatusBit = 15, mMessage = '310,"Entering idle layer"' },
+    -- Misc Errors (+300 & +500)
+    [311] = {mState = true,  mCode = "311", mStatusBit = 15, mMessage = '+311,"Not able to specify resolution with Auto range"' },
+    [320] = {mState = true,  mCode = "320", mStatusBit = 15, mMessage = '+320,"Slave processor communications error"' },
+    [514] = {mState = true,  mCode = "514", mStatusBit = 15, mMessage = '+514,"Not allowed; Instrument locked by another I/O session"' },
+    [532] = {mState = true,  mCode = "532", mStatusBit = 15, mMessage = '+532,"Not able to achieve requested resolution"' },
+    [540] = {mState = true,  mCode = "540", mStatusBit = 15, mMessage = '+540,"Cannot use overload as math reference"' },
+    [541] = {mState = true,  mCode = "541", mStatusBit = 15, mMessage = '+541,"Cannot use zero as math reference for PCT scaling function"' },
+    [542] = {mState = true,  mCode = "542", mStatusBit = 15, mMessage = '+542,"Measured dB reference too small"' },
 
-    -- Questionable events:
-    [408] = {mState = false, mCode = "408", mStatusBit = 15, mMessage = '408,"Questionable Calibration"' },
-    [414] = {mState = false, mCode = "414", mStatusBit = 15, mMessage = '414,"Command Warning"' },
+    -- Licensing and Self-test Errors (+600)
+    [600] = {mState = false, mCode = "600", mStatusBit = 15, mMessage = '+600,"Internal licensing error"' },
+    [601] = {mState = false, mCode = "601", mStatusBit = 15, mMessage = '+601,"License file corrupt or empty"' },
+    [602] = {mState = false, mCode = "602", mStatusBit = 15, mMessage = '+602,"No valid licenses found for this instrument"' },
+    [603] = {mState = false, mCode = "603", mStatusBit = 15, mMessage = '+603,"Some licenses could not be installed"' },
+    [604] = {mState = false, mCode = "604", mStatusBit = 15, mMessage = '+604,"License not found"' },
+    [605] = {mState = false, mCode = "605", mStatusBit = 15, mMessage = '+605,"License already installed"' },
+    [611] = {mState = false, mCode = "611", mStatusBit = 15, mMessage = '+611,"Self-test failed; Real Time Clock reset, check battery"' },
+    [612] = {mState = false, mCode = "612", mStatusBit = 15, mMessage = '+612,"Self-test failed; keyboard processor not responding"' },
+    [613] = {mState = false, mCode = "613", mStatusBit = 15, mMessage = '+613,"Self-test failed; unable to communicate with power controller"' },
+    [614] = {mState = false, mCode = "614", mStatusBit = 15, mMessage = '+614,"Self-test failed; unable to sense line frequency"' },
+    [615] = {mState = false, mCode = "615", mStatusBit = 15, mMessage = '+615,"Self-test failed; measurement processor not responding"' },
+    [616] = {mState = false, mCode = "616", mStatusBit = 15, mMessage = '+616,"Self-test failed; calibration memory reading error"' },
+    [617] = {mState = false, mCode = "617", mStatusBit = 15, mMessage = '+617,"Self-test failed; FPGA unconfigured"' },
+    [618] = {mState = false, mCode = "618", mStatusBit = 15, mMessage = '+618,"Self-test failed; FPGA bus error"' },
+    [619] = {mState = false, mCode = "619", mStatusBit = 15, mMessage = '+619,"Self-test failed; FPGA clock"' },
+    [620] = {mState = false, mCode = "620", mStatusBit = 15, mMessage = '+620,"Self-test failed; shift register"' },
+    [621] = {mState = false, mCode = "621", mStatusBit = 15, mMessage = '+621,"Self-test failed; overload sense stuck on"' },
+    [622] = {mState = false, mCode = "622", mStatusBit = 15, mMessage = '+622,"Self-test failed; ADC generic error"' },
+    [623] = {mState = false, mCode = "623", mStatusBit = 15, mMessage = '+623,"Self-test failed; ADC integrator saturated"' },
+    [624] = {mState = false, mCode = "624", mStatusBit = 15, mMessage = '+624,"Self-test failed; Coarse ADC error"' },
+    [625] = {mState = false, mCode = "625", mStatusBit = 15, mMessage = '+625,"Self-test failed; ADC offset"' },
+    [626] = {mState = false, mCode = "626", mStatusBit = 15, mMessage = '+626,"Self-test failed; ADC noise"' },
+    [627] = {mState = false, mCode = "627", mStatusBit = 15, mMessage = '+627,"Self-test failed; Fine ADC generic error"' },
+    [628] = {mState = false, mCode = "628", mStatusBit = 15, mMessage = '+628,"Self-test failed; Fine ADC off-scale low"' },
+    [629] = {mState = false, mCode = "629", mStatusBit = 15, mMessage = '+629,"Self-test failed; Fine ADC off-scale high"' },
+    [630] = {mState = false, mCode = "630", mStatusBit = 15, mMessage = '+630,"Self-test failed; Fine ADC range"' },
+    [631] = {mState = false, mCode = "631", mStatusBit = 15, mMessage = '+631,"Self-test failed; Fine ADC bits stuck"' },
+    [632] = {mState = false, mCode = "632", mStatusBit = 15, mMessage = '+632,"Self-test failed; Fine ADC slope"' },
+    [633] = {mState = false, mCode = "633", mStatusBit = 15, mMessage = '+633,"Self-test failed; Fine ADC linearity"' },
+    [634] = {mState = false, mCode = "634", mStatusBit = 15, mMessage = '+634,"Self-test failed; low DC zero"' },
+    [635] = {mState = false, mCode = "635", mStatusBit = 15, mMessage = '+635,"Self-test failed; high DC zero"' },
+    [636] = {mState = false, mCode = "636", mStatusBit = 15, mMessage = '+636,"Self-test failed; +7V reference"' },
+    [637] = {mState = false, mCode = "637", mStatusBit = 15, mMessage = '+637,"Self-test failed; -10V reference"' },
+    [638] = {mState = false, mCode = "638", mStatusBit = 15, mMessage = '+638,"Self-test failed; x1 gain, zero input"' },
+    [639] = {mState = false, mCode = "639", mStatusBit = 15, mMessage = '+639,"Self-test failed; x10 gain, zero input"' },
+    [640] = {mState = false, mCode = "640", mStatusBit = 15, mMessage = '+640,"Self-test failed; x100 gain, zero input"' },
+    [641] = {mState = false, mCode = "641", mStatusBit = 15, mMessage = '+641,"Self-test failed; precharge"' },
+    [642] = {mState = false, mCode = "642", mStatusBit = 15, mMessage = '+642,"Self-test failed; x1 gain, non-zero input"' },
+    [643] = {mState = false, mCode = "643", mStatusBit = 15, mMessage = '+643,"Self-test failed; x10 gain, non-zero input"' },
+    [644] = {mState = false, mCode = "644", mStatusBit = 15, mMessage = '+644,"Self-test failed; x100 gain, non-zero input"' },
+    [645] = {mState = false, mCode = "645", mStatusBit = 15, mMessage = '+645,"Self-test failed; 100uA current source"' },
+    [646] = {mState = false, mCode = "646", mStatusBit = 15, mMessage = '+646,"Self-test failed; 10uA current source"' },
+    [647] = {mState = false, mCode = "647", mStatusBit = 15, mMessage = '+647,"Self-test failed; 2 ohm shunt"' },
+    [648] = {mState = false, mCode = "648", mStatusBit = 15, mMessage = '+648,"Self-test failed; AC offset"' },
+    [649] = {mState = false, mCode = "649", mStatusBit = 15, mMessage = '+649,"Self-test failed; frequency input"' },
+    [650] = {mState = false, mCode = "650", mStatusBit = 15, mMessage = '+650,"Self-test failed; input switch"' },
+    [651] = {mState = false, mCode = "651", mStatusBit = 15, mMessage = '+651,"Self-test failed; autocal 10  V range full scale"' },
+    [652] = {mState = false, mCode = "652", mStatusBit = 15, mMessage = '+652,"Self-test failed; autocal 10  V range tenth scale"' },
+    [653] = {mState = false, mCode = "653", mStatusBit = 15, mMessage = '+653,"Self-test failed; autocal 1 V range full scale"' },
+    [654] = {mState = false, mCode = "654", mStatusBit = 15, mMessage = '+654,"Self-test failed; autocal 1 V range tenth scale"' },
+    [655] = {mState = false, mCode = "655", mStatusBit = 15, mMessage = '+655,"Self-test failed; autocal 100 mV range full scale"' },
+    [656] = {mState = false, mCode = "656", mStatusBit = 15, mMessage = '+656,"Self-test failed; autocal 100 V range reference"' },
+    [657] = {mState = false, mCode = "657", mStatusBit = 15, mMessage = '+657,"Self-test failed; autocal 10 kOhm range full scale"' },
+    [658] = {mState = false, mCode = "658", mStatusBit = 15, mMessage = '+658,"Self-test failed; autocal 10 kOhm range tenth scale"' },
+    [659] = {mState = false, mCode = "659", mStatusBit = 15, mMessage = '+659,"Self-test failed; autocal 1 kOhm range full scale"' },
+    [660] = {mState = false, mCode = "660", mStatusBit = 15, mMessage = '+660,"Self-test failed; autocal 100 kOhm tenth scale"' },
+    [661] = {mState = false, mCode = "661", mStatusBit = 15, mMessage = '+661,"Self-test failed; autocal 1 MOhm half scale"' },
+    [662] = {mState = false, mCode = "662", mStatusBit = 15, mMessage = '+662,"Self-test failed; autocal 100 kOhm to 1 MOhm transfer"' },
+    [663] = {mState = false, mCode = "663", mStatusBit = 15, mMessage = '+663,"Self-test failed; autocal 1 MOhm to 10 MOhm transfer"' },
+    [664] = {mState = false, mCode = "664", mStatusBit = 15, mMessage = '+664,"Self-test failed; autocal 10 MOhm internal resistor"' },
+    [665] = {mState = false, mCode = "665", mStatusBit = 15, mMessage = '+665,"Self-test aborted; high ac voltage present on input terminals"' },
+    [666] = {mState = false, mCode = "666", mStatusBit = 15, mMessage = '+666,"Self-test aborted; high dc voltage present on input terminals"' },
 
-    -- Error Events
-    -- Calibration errors:
-    [500] = {mState = true, mCode = "500", mStatusBit = 3, mMessage = '500,"Date of calibration not set"' },
-    [501] = {mState = true, mCode = "501", mStatusBit = 3, mMessage = '501,"Next date of calibration not set"' },
-    [502] = {mState = true, mCode = "502", mStatusBit = 3, mMessage = '502,"Calibration data invalid"' },
-    [503] = {mState = true, mCode = "503", mStatusBit = 3, mMessage = '503,"DAC calibration overflow"' },
-    [504] = {mState = true, mCode = "504", mStatusBit = 3, mMessage = '504,"DAC calibration underflow"' },
-    [505] = {mState = true, mCode = "505", mStatusBit = 3, mMessage = '505,"Source offset data invalid"' },
-    [506] = {mState = true, mCode = "506", mStatusBit = 3, mMessage = '506,"Source gain data invalid"' },
-    [507] = {mState = true, mCode = "507", mStatusBit = 3, mMessage = '507,"Measurement offset data invalid"' },
-    [508] = {mState = true, mCode = "508", mStatusBit = 3, mMessage = '508,"Measurement gain data invalid"' },
-    [509] = {mState = true, mCode = "509", mStatusBit = 3, mMessage = '509,"Not permitted with cal locked"' },
-    [510] = {mState = true, mCode = "510", mStatusBit = 3, mMessage = '510,"Not permitted with cal un-locked"' },
 
-    -- Lost data errors:
-    [601] = {mState = true, mCode = "601", mStatusBit = 3, mMessage = '601,"Reading buffer data lost"' },
-    [602] = {mState = true, mCode = "602", mStatusBit = 3, mMessage = '602,"GPIB address lost"' },
-    [603] = {mState = true, mCode = "603", mStatusBit = 3, mMessage = '603,"Power-on state lost"' },
-    [604] = {mState = true, mCode = "604", mStatusBit = 3, mMessage = '604,"DC calibration data lost"' },
-    [605] = {mState = true, mCode = "605", mStatusBit = 3, mMessage = '605,"Calibration dates lost"' },
-    [606] = {mState = true, mCode = "606", mStatusBit = 3, mMessage = '606,"GPIB communication language lost"' },
+    -- Calibration Errors (+700)
+    [701] = {mState = false, mCode = "701", mStatusBit = 15, mMessage = '+701,"Calibration error; security defeted"' },
+    [702] = {mState = false, mCode = "702", mStatusBit = 15, mMessage = '+702,"Calibration error; calibration memory is secured"' },
+    [703] = {mState = false, mCode = "703", mStatusBit = 15, mMessage = '+703,"Calibration error; secure code provided was invalid"' },
+    [704] = {mState = false, mCode = "704", mStatusBit = 15, mMessage = '+704,"Calibration error; secure code too long"' },
+    [705] = {mState = false, mCode = "705", mStatusBit = 15, mMessage = '+705,"Calibration error; calibration aborted"' },
+    [706] = {mState = false, mCode = "706", mStatusBit = 15, mMessage = '+706,"Calibration error; provided value out of range"' },
+    [707] = {mState = false, mCode = "707", mStatusBit = 15, mMessage = '+707,"Calibration error; computed correction factor out of range"' },
+    [708] = {mState = false, mCode = "708", mStatusBit = 15, mMessage = '+708,"Calibration error; signal measurement out of range"' },
+    [709] = {mState = false, mCode = "709", mStatusBit = 15, mMessage = '+709,"Calibration error; no calibration for this function/range"' },
+    [710] = {mState = false, mCode = "710", mStatusBit = 15, mMessage = '+710,"Calibration error; full scale correction out of range"' },
+    [711] = {mState = false, mCode = "711", mStatusBit = 15, mMessage = '+711,"Calibration error; calibration string too long"' },
+    [712] = {mState = false, mCode = "712", mStatusBit = 15, mMessage = '+712,"Calibration failed"' },
+    [713] = {mState = false, mCode = "713", mStatusBit = 15, mMessage = '+713,"Calibration error"' },
+    [715] = {mState = false, mCode = "715", mStatusBit = 15, mMessage = '+715,"Calibration error"' },
+    [720] = {mState = false, mCode = "720", mStatusBit = 15, mMessage = '+720,"Calibration error; DCV offset out of range"' },
+    [721] = {mState = false, mCode = "721", mStatusBit = 15, mMessage = '+721,"Calibration error; DCI offset out of range"' },
+    [722] = {mState = false, mCode = "722", mStatusBit = 15, mMessage = '+722,"Calibration error; RES offset out of range"' },
+    [723] = {mState = false, mCode = "723", mStatusBit = 15, mMessage = '+723,"Calibration error; FRES offset out of range"' },
+    [724] = {mState = false, mCode = "724", mStatusBit = 15, mMessage = '+724,"Calibration error; extended resistance self cal failed"' },
+    [725] = {mState = false, mCode = "725", mStatusBit = 15, mMessage = '+725,"Calibration error; 1000V DC correction out of range"' },
+    [726] = {mState = false, mCode = "726", mStatusBit = 15, mMessage = '+726,"Calibration error; ACV offset out of range"' },
+    [727] = {mState = false, mCode = "727", mStatusBit = 15, mMessage = '+727,"Calibration error; ACI offset out of range"' },
+    [730] = {mState = false, mCode = "730", mStatusBit = 15, mMessage = '+730,"Calibration error; precharge DAC convergence failed"' },
+    [731] = {mState = false, mCode = "731", mStatusBit = 15, mMessage = '+731,"Calibration error; A/D turnover correction out of range"' },
+    [732] = {mState = false, mCode = "732", mStatusBit = 15, mMessage = '+732,"Calibration error; AC flatness calibration failed"' },
+    [733] = {mState = false, mCode = "733", mStatusBit = 15, mMessage = '+733,"Calibration error; AC low frequency correction out of range"' },
+    [734] = {mState = false, mCode = "734", mStatusBit = 15, mMessage = '+734,"Calibration error; AC flatness calibration restarted by function/range change"' },
+    [735] = {mState = false, mCode = "735", mStatusBit = 15, mMessage = '+735,"Calibration error; 1 kHz AC flatness frequency point must be last frequency point in sequence"' },
+    [736] = {mState = false, mCode = "736", mStatusBit = 15, mMessage = '+736,"Calibration error; DCI 100uA range self-cal failed"' },
+    [740] = {mState = false, mCode = "740", mStatusBit = 15, mMessage = '+740,"Calibration data lost: secure state"' },
+    [741] = {mState = false, mCode = "741", mStatusBit = 15, mMessage = '+741,"Calibration data lost: string data"' },
+    [742] = {mState = false, mCode = "742", mStatusBit = 15, mMessage = '+742,"Calibration data lost: corrections"' },
+    [746] = {mState = false, mCode = "746", mStatusBit = 15, mMessage = '+746,"System information write failure"' },
+    [747] = {mState = false, mCode = "747", mStatusBit = 15, mMessage = '+747,"System information read failure"' },
+    [748] = {mState = false, mCode = "748", mStatusBit = 15, mMessage = '+748,"Calibration memory write failure"' },
+    [749] = {mState = false, mCode = "749", mStatusBit = 15, mMessage = '+749,"Calibration memory read failure"' },
+    [750] = {mState = false, mCode = "750", mStatusBit = 15, mMessage = '+750,"Autocalibration corrections lost"' },
+    [751] = {mState = false, mCode = "751", mStatusBit = 15, mMessage = '+751,"Autocalibration memory write failure"' },
+    [752] = {mState = false, mCode = "752", mStatusBit = 15, mMessage = '+752,"Autocalibration memory read failure"' },
+    [753] = {mState = false, mCode = "753", mStatusBit = 15, mMessage = '+753,"Autocalibration measurement out of range"' },
+    [760] = {mState = false, mCode = "760", mStatusBit = 15, mMessage = '+760,"Operation aborted; high voltage present on input terminals"' },
 
-    -- Communication errors:
-    [700] = {mState = true, mCode = "700", mStatusBit = 3, mMessage = '700,"Invalid system communication"' },
-    [701] = {mState = true, mCode = "701", mStatusBit = 3, mMessage = '701,"ASCII only with RS-232"' },
-    [702] = {mState = true, mCode = "702", mStatusBit = 3, mMessage = '702,"Preamp Timeout"' },
-
-    -- Additional command execution errors:
-    [800] = {mState = true, mCode = "800", mStatusBit = 4, mMessage = '800,"Illegal with storage active"' },
-    [801] = {mState = true, mCode = "801", mStatusBit = 4, mMessage = '801,"Insufficient vector data"' },
-    [802] = {mState = true, mCode = "802", mStatusBit = 4, mMessage = '802,"OUTPUT blocked by output enable"' },
-    [803] = {mState = true, mCode = "803", mStatusBit = 4, mMessage = '803,"Not permitted with OUTPUT off"' },
-    [804] = {mState = true, mCode = "804", mStatusBit = 4, mMessage = '804,"Expression list full"' },
-    [805] = {mState = true, mCode = "805", mStatusBit = 4, mMessage = '805,"Undefined expression exists"' },
-    [806] = {mState = true, mCode = "806", mStatusBit = 4, mMessage = '806,"Expression not found"' },
-    [807] = {mState = true, mCode = "807", mStatusBit = 4, mMessage = '807,"Definition not allowed"' },
-    [808] = {mState = true, mCode = "808", mStatusBit = 4, mMessage = '808,"Expression cannot be deleted"' },
-    [809] = {mState = true, mCode = "809", mStatusBit = 4, mMessage = '809,"Source memory location revised"' },
-    [810] = {mState = true, mCode = "810", mStatusBit = 4, mMessage = '810,"OUTPUT blocked by Over Temp"' },
-    [811] = {mState = true, mCode = "811", mStatusBit = 4, mMessage = '811,"Not an operator or number"' },
-    [812] = {mState = true, mCode = "812", mStatusBit = 4, mMessage = '812,"Mismatched parenthesis"' },
-    [813] = {mState = true, mCode = "813", mStatusBit = 4, mMessage = '813,"Not a number of data handle"' },
-    [814] = {mState = true, mCode = "814", mStatusBit = 4, mMessage = '814,"Mismatched brackets"' },
-    [815] = {mState = true, mCode = "815", mStatusBit = 4, mMessage = '815,"Too many parenthesis"' },
-    [816] = {mState = true, mCode = "816", mStatusBit = 4, mMessage = '816,"Entire expression not parsed"' },
-    [817] = {mState = true, mCode = "817", mStatusBit = 4, mMessage = '817,"Unknown token"' },
-    [818] = {mState = true, mCode = "818", mStatusBit = 4, mMessage = '818,"Error parsing mantissa"' },
-    [819] = {mState = true, mCode = "819", mStatusBit = 4, mMessage = '819,"Error parsing exponent"' },
-    [820] = {mState = true, mCode = "820", mStatusBit = 4, mMessage = '820,"Error parsing value"' },
-    [821] = {mState = true, mCode = "821", mStatusBit = 4, mMessage = '821,"Invalid data handle index"' },
-    [822] = {mState = true, mCode = "822", mStatusBit = 4, mMessage = '822,"Too small for sense range"' },
-    [823] = {mState = true, mCode = "823", mStatusBit = 4, mMessage = '823,"Invalid with source read-back on"' },
-    [824] = {mState = true, mCode = "824", mStatusBit = 4, mMessage = '824,"Cannot exceed compliance range"' },
-    [825] = {mState = true, mCode = "825", mStatusBit = 4, mMessage = '825,"Invalid with auto-ohms on"' },
-    [826] = {mState = true, mCode = "826", mStatusBit = 4, mMessage = '826,"Attempt to exceed power limit"' },
-    [827] = {mState = true, mCode = "827", mStatusBit = 4, mMessage = '827,"Invalid with ohms guard on"' },
-    [828] = {mState = true, mCode = "828", mStatusBit = 4, mMessage = '828,"Invalid on 1 amp range"' },
-    [829] = {mState = true, mCode = "829", mStatusBit = 4, mMessage = '829,"Invalid on 1kV range"' },
-    [830] = {mState = true, mCode = "830", mStatusBit = 4, mMessage = '830,"Invalid with INF ARM:COUNT"' },
-    [831] = {mState = true, mCode = "831", mStatusBit = 4, mMessage = '831,"Invalid in Pulse Mode"' },
-    [900] = {mState = true, mCode = "900", mStatusBit = 3, mMessage = '900,"Internal System Error"' }
+    -- Misc Errors (+800)
+    [800] = {mState = false, mCode = "800", mStatusBit = 15, mMessage = '+800,"Nonvolatile memory write failure"' },
+    [810] = {mState = false, mCode = "810", mStatusBit = 15, mMessage = '+810,"State has not been stored"' },
+    [820] = {mState = false, mCode = "820", mStatusBit = 15, mMessage = '+820,"Model and serial numbers not restored"' },
+    [821] = {mState = false, mCode = "821", mStatusBit = 15, mMessage = '+821,"Controller and measurement board model numbers do not match"' },
+    [822] = {mState = false, mCode = "822", mStatusBit = 15, mMessage = '+822,"Controller and measurement board serial numbers do not match"' },
+    [823] = {mState = false, mCode = "823", mStatusBit = 15, mMessage = '+823,"Incorrect firmware loaded for this model number"' },
 }
 
 ------------------------------------------------------------------------------
@@ -5851,27 +5992,29 @@ local lErrors =
 -- Put an error into the error queue.
 --
 ------------------------------------------------------------------------------
-
 gErrorQueue.Add = function (lErrorNumber)
     local lError = lErrors[lErrorNumber]
-       
-    --if lError.mStatusBit ~= 15 then
-    --    StatusModel.SetEvent(standardStatus, lError.mStatusBit + 1)
-    --end
 
     if lError.mState then
-        local lCount = table.getn(gErrorQueue)
+        -- Set error events and global error
+        if lError.mStatusBit ~= 15 then
+            StatusModel.SetEvent(standardEvent, lError.mStatusBit + 1)
+        end
+        StatusModel.SetCondition(operStatus, 14)
 
-        if lCount < 64 then
+        -- Check if queue full
+        local lCount = table.getn(gErrorQueue)
+        if lCount < 20 then
             table.insert(gErrorQueue, lError)
-            --StatusModel.SetSummary(3)
-        elseif lCount == 64 then
+        elseif lCount == 20 then
             table.insert(gErrorQueue, lErrors[-350])
         end    
+
         -- Beep on error
         if gInstrumentState.General.Beeper_State.value == gInstrumentAttributes.Limit_Beeper.ON then
             beeper.beep(0.15, 340)
         end
+
         -- Display Error Message on Front Panel
         if gDisplayErrors then
             if gErrorQueue.lDisplay then
@@ -5885,89 +6028,32 @@ gErrorQueue.Add = function (lErrorNumber)
         if gErrorReadback then
             print(lError.mMessage)
         end
+    else
+        -- Inactive error called
+        gErrorQueue.Add(-500)
+        return
     end
 end
 
---[[
-    ReadErrorQueue prints the errors from the error queue
-    if the queue is empty '0,"No error"' is printed
---]]
+------------------------------------------------------------------------------
+--
+-- gErrorQueue.ReadError
+--
+-- ReadErrorQueue prints the errors from the error queue if the queue is 
+-- empty '0,"No error"' is printed
+--
+------------------------------------------------------------------------------
 gErrorQueue.ReadError = function ()
     local lCount = table.getn(gErrorQueue)
     
     if lCount == 0 then
-        print('0,"No error"')
+        print('+0,"No error"')
     else
         print(gErrorQueue[1].mMessage)
         table.remove(gErrorQueue, 1)
         if lCount == 1 then
-            --StatusModel.ClearSummary(3)
+            StatusModel.ClearCondition(14)
         end
-    end
-end
-
---[[
-    ReadErrorCode prints the error codes from the error queue
-    if the queue is empty '0' is printed
---]]
-gErrorQueue.ReadErrorCode = function ()
-    local lCount = table.getn(gErrorQueue)
-    
-    if lCount == 0 then
-        Print('0')
-    else
-        Print(gErrorQueue[1].mCode)
-        table.remove(gErrorQueue, 1)
-        if lCount == 1 then
-            --StatusModel.ClearSummary(3)
-        end
-    end
-end
-
---[[
-    ErrorCount prints the number of errors in the queue
---]]
-gErrorQueue.ErrorCount = function ()
-    Print(tostring(table.getn(gErrorQueue)))
-end
-
---[[
-    ReadErrorAll prints all the errors from the error queue
-    and clears the error queue.
-    if the queue is empty '0,"No error"' is printed
---]]
-gErrorQueue.ReadErrorAll = function ()
-    if table.getn(gErrorQueue) == 0 then
-        Print('0,"No error"')
-    else
-        for i = 1, table.getn(gErrorQueue) do
-            if i > 1 then
-                Print(',')
-            end
-            Print(gErrorQueue[1].mMessage)
-            table.remove(gErrorQueue, 1)
-        end
-        --StatusModel.ClearSummary(3)
-    end
-end
-
---[[
-    ReadErrorCodeAll prints all the error codes from the error queue
-    and clears the error queue.
-    if the queue is empty '0' is printed
---]]
-gErrorQueue.ReadErrorCodeAll = function ()
-    if table.getn(gErrorQueue) == 0 then
-        Print('0')
-    else
-        for i = 1, table.getn(gErrorQueue) do
-            if i > 1 then
-                Print(',')
-            end
-            Print(gErrorQueue[1].mCode)
-            table.remove(gErrorQueue, 1)
-        end
-        StatusModel.ClearSummary(3)
     end
 end
 
@@ -5983,134 +6069,6 @@ gErrorQueue.Clear = function ()
         end
         --StatusModel.ClearSummary(3)
     end
-end
-
---[[
-    DisableAllErrorEvents disables all the error and statue events
---]]
-gErrorQueue.DisableAllErrorEvents = function ()
-    for k, v in pairs(lErrors) do
-        lErrors[k].mState = false
-    end
-end
-
---[[
-    ChangeErrorEventState sets the state of the error events in lErrors table
---]]
-gErrorQueue.ChangeErrorEventState = function (lStart, lStop, lState)
-    -- if start index is greater than end index swap them
-    if lStart > lStop then
-       local tempStart = lStart
-       lStart = lStop
-       lStop = tempStart
-    end
-
-    -- Set the state
-    for k = lStart, lStop do
-        if lErrors[k] then
-            lErrors[k].mState = lState
-        end
-    end
-end
-
---[[
-    EnableErrorEvents enables the spcecified list of error and statue events
-    and disables the rest
---]]
-gErrorQueue.EnableErrorEvents = function (lEventNumList)
-    gErrorQueue.DisableAllErrorEvents()
-    for k = 1, table.getn(lEventNumList), 2 do
-        gErrorQueue.ChangeErrorEventState(lEventNumList[k], lEventNumList[k+1], true)
-    end
-end
-
---[[
-    DisableErrorEvents disable the spcecified list of error and statue events
---]]
-gErrorQueue.DisableErrorEvents = function (lEventNumList)
-    --if table.getn(lEventNumList) then
-        for k = 1, table.getn(lEventNumList), 2 do
-            gErrorQueue.ChangeErrorEventState(lEventNumList[k], lEventNumList[k+1], false)
-        end
-    --end
-end
-
---[[
-    PrintErrorEvents prints the list Enabled/Disabled error and statue events
---]]
-gErrorQueue.PrintErrorEvents = function (lState)
-    local lAddToPrintQue = true
-    local lStart, lEnd
-    local lCount = 0
-    local lComma = false
-    
-    Print("(")
-    for i = -440, 900 do
-        if lErrors[i] then
-            if lErrors[i].mState == lState then
-                if lAddToPrintQue then
-                    lStart = lErrors[i].mCode
-                    lAddToPrintQue = false
-                end
-                lEnd = lErrors[i].mCode
-                lCount = lCount + 1
-            else
-                if lAddToPrintQue == false then
-                    if lCount > 1 then
-                        if lComma then
-                            Print(",")
-                        end
-                        if tonumber(lStart) >= 0 then
-                           Print("+")
-                        end
-                        Print(lStart)
-                        Print(":")
-                        if tonumber(lEnd) >= 0 then
-                           Print("+")
-                        end
-                        Print(lEnd)
-                        lComma = true
-                        lCount = 0
-                        lAddToPrintQue = true
-                    else
-                        if lComma then
-                            Print(",")
-                        end
-                        if tonumber(lEnd) >= 0 then
-                           Print("+")
-                        end
-                        Print(lEnd)
-                        lComma = true
-                        lCount = 0
-                        lAddToPrintQue = true
-                    end
-                end
-            end
-        end
-    end
-    if lCount > 1 then
-        if lComma then
-            Print(",")
-        end
-        if tonumber(lStart) >= 0 then
-           Print("+")
-        end
-        Print(lStart)
-        Print(":")
-        if tonumber(lEnd) >= 0 then
-           Print("+")
-        end
-        Print(lEnd)
-    elseif lCount == 1 then
-        if lComma then
-            Print(",")
-        end
-        if tonumber(lEnd) >= 0 then
-           Print("+")
-        end
-        Print(lEnd)
-    end
-    Print(")")
 end
 
 --============================================================================
@@ -6214,10 +6172,19 @@ gTriggerModel.EndTriggerModel = function()
     UpdateBufferStats()
 end
 
-------------------------------------------------------------------------------
--- Print functions
+--============================================================================
 --
--- These functions are used to format and print data
+-- General use functions
+--
+-- These functions are used in the command definitions. 
+--
+--============================================================================
+
+------------------------------------------------------------------------------
+--
+-- FormatNumber
+--
+-- Formats a number for printing
 --
 -----------------------------------------------------------------------------
 local FormatNumber = function (lNumber, signed)
@@ -6227,6 +6194,13 @@ local FormatNumber = function (lNumber, signed)
     return string.format("%E", lNumber)
 end
 
+------------------------------------------------------------------------------
+--
+-- FormatBuffer
+--
+-- Formats the reading buffer for printing
+--
+-----------------------------------------------------------------------------
 local FormatBuffer = function (lStart, lCount, remove)
     local lBuffer = gReadingMemory.readingBuffer
 
@@ -6240,12 +6214,28 @@ local FormatBuffer = function (lStart, lCount, remove)
     return lFormatString
 end
 
+------------------------------------------------------------------------------
+--
+-- FormatBlockLength
+--
+-- Formats a string to be printed with a size indicator. First digit is the
+-- number of digits in the size and size is number of characters following.
+-- (ex. #112 hello world!)
+--
+-----------------------------------------------------------------------------
 local FormatBlockLength = function(lString)
     local lBlockLength = string.format("%d", string.len(lString))
     local lNumLength = string.format("%d", string.len(lBlockLength))
     return string.format("#%s%s%s", lNumLength, lBlockLength, lString)
 end
 
+------------------------------------------------------------------------------
+--
+-- ChangeMeasFunction
+--
+-- Changes the measure function, recalling from instrument state variables
+--
+-----------------------------------------------------------------------------
 local ChangeMeasFunction = function(measFunction, setters)
     local lInstMeasFunc = gInstrumentState.Measure_Function
     lInstMeasFunc.value = measFunction
@@ -6283,6 +6273,13 @@ local ChangeMeasFunction = function(measFunction, setters)
     --end
 end
 
+------------------------------------------------------------------------------
+--
+-- FindStartIndex
+--
+-- Finds the start index of the reading buffer, excluding all deleted readings
+--
+-----------------------------------------------------------------------------
 local FindStartIndex = function()
     local buffer = gReadingMemory.readingBuffer
     local lStart = buffer.startindex
@@ -6302,6 +6299,14 @@ local FindStartIndex = function()
     return lStart, buffer.n - lRemovedPoints
 end
 
+------------------------------------------------------------------------------
+--
+-- FindAvgStartIndex
+--
+-- Finds the start index of the reading buffer for statistics, excluding all 
+-- readings since last CALC:AVERAGE:CLEAR
+--
+-----------------------------------------------------------------------------
 local FindAvgStartIndex = function()
     local buffer = gReadingMemory.readingBuffer
     local lStart = buffer.startindex
@@ -6321,6 +6326,14 @@ local FindAvgStartIndex = function()
     return lStart, buffer.n - lRemovedPoints
 end
 
+------------------------------------------------------------------------------
+--
+-- UpdateBufferStats
+--
+-- Update all buffer statistics, excluding all readings since last 
+-- CALC:AVERAGE:CLEAR
+--
+-----------------------------------------------------------------------------
 UpdateBufferStats = function()
     local lIndex, lNPoints = FindAvgStartIndex()
     local buffer = gReadingMemory.readingBuffer.readings
