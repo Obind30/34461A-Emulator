@@ -3444,6 +3444,18 @@ gParserTable.mParseDisplayView =
         ["TCHART"]      = gInstrumentAttributes.Display_View.TChart,
     }
 }
+gParserTable.mParseSaveStates =
+{
+    mParse = function(lParameter)
+        if string.len(lParameter) ~= 1 then return nil, -104 end
+        local lCharCode = string.byte(lParameter, 1)
+        if lCharCode >= gCharCodes.mZero and lCharCode <= string.byte("5", 1) then
+            return lParameter
+        else
+            return nil, -104
+        end
+    end
+}
 
 ------------------------------------------------------------------------------
 --
@@ -4283,14 +4295,18 @@ end
 
 gCommandTree = 
 { 
-    ["*IDN"] = {mQuery = {}},
     ["*CLS"] = {mCommand = {}},
     ["*ESE"] = {mCommand = {}, mQuery = {}},
     ["*ESR"] = {mQuery = {}},
+    ["*IDN"] = {mQuery = {}},
+    ["*OPC"] = {mQuery = {}, mCommand = {}},
     ["*PSC"] = {mQuery = {}},
+    ["*RCL"] = {mCommand = {}},
     ["*RST"] = {mCommand = {}},
+    ["*SAV"] = {mCommand = {}},
     ["*SRE"] = {mCommand = {}, mQuery = {}},
     ["*STB"] = {mQuery = {}},
+    ["*WAI"] = {mCommand = {}},
     ["ABORT"] =
     {
         mCommand = {mPriority = true},
@@ -4511,13 +4527,6 @@ gCommandTree =
         {
             mQuery = {},
         },
-    },
-    ["DEV"] = 
-    {
-        ["EXIT"] =
-        {
-            mCommand = {},
-        }
     },
     ["DISPLAY"] =
     {
@@ -5338,7 +5347,6 @@ gCommandTree =
 }
 
 -- ADD ABBREVIATION ALIASES HERE
-gCommandTree["DEV"]["EXT"]                              = gCommandTree["DEV"]["EXIT"]
 gCommandTree["ABOR"]                                    = gCommandTree["ABORT"]
 gCommandTree["CONF"]                                    = gCommandTree["CONFIGURE"]
 gCommandTree["FET"]                                     = gCommandTree["FETCH"]
@@ -6375,15 +6383,10 @@ end
 
 ------------------------------------------------------------------------------
 --
--- Common Commands
+-- IEEE 488.2 Common Commands
 --
 -----------------------------------------------------------------------------
 
--- *IDN?
-gCurrentRoot = gCommandTree["*IDN"]
-gCurrentRoot.mQuery.mExecute = function()
-    print(gInstrumentState.General.IDN_String.value)
-end
 -- *CLS
 gCurrentRoot = gCommandTree["*CLS"]
 gCurrentRoot.mCommand.mExecute = function()
@@ -6413,10 +6416,45 @@ gCurrentRoot.mQuery.mExecute = function()
     print(standardEvent.mEvent)
     StatusModel.ClearEvent(standardEvent)
 end
+-- *IDN?
+gCurrentRoot = gCommandTree["*IDN"]
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.IDN_String.value)
+end
+-- *OPC
+gCurrentRoot = gCommandTree["*OPC"]
+gCurrentRoot.mCommand.mExecute = function()
+    opc()
+end
+-- *OPC?
+gCurrentRoot.mQuery.mExecute = function()
+    waitcomplete()
+    print(1)
+end
 -- *PSC?
 gCurrentRoot = gCommandTree["*PSC"]
 gCurrentRoot.mQuery.mExecute = function()
     print(0)
+end
+-- *RCL {0|1|2|3|4}
+gCurrentRoot = gCommandTree["*RCL"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseSaveStates}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local scriptName = "STATE_"..lParameters[1]
+    gCommandTree["MMEMORY"]["LOAD"]["STATE"].mCommand.mExecute({scriptName})
+end
+-- *RST
+gCurrentRoot = gCommandTree["*RST"]
+gCurrentRoot.mCommand.mExecute = function()
+    -- Reset to 34461A defaults
+    ResetDefaults()
+end
+-- *SAV {0|1|2|3|4}
+gCurrentRoot = gCommandTree["*SAV"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseSaveStates}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local scriptName = "STATE_"..lParameters[1]
+    gCommandTree["MMEMORY"]["STORE"]["STATE"].mCommand.mExecute({scriptName})
 end
 -- *SRE <enable_value>
 gCurrentRoot = gCommandTree["*SRE"]
@@ -6438,11 +6476,10 @@ gCurrentRoot = gCommandTree["*STB"]
 gCurrentRoot.mQuery.mExecute = function()
     print(StatusModel.mStatus)
 end
--- *RST
-gCurrentRoot = gCommandTree["*RST"]
+-- *WAI
+gCurrentRoot = gCommandTree["*WAI"]
 gCurrentRoot.mCommand.mExecute = function()
-    -- Reset to 34461A defaults
-    ResetDefaults()
+    waitcomplete()
 end
 -- ABORt
 gCurrentRoot = gCommandTree["ABORT"]
@@ -6450,6 +6487,15 @@ gCurrentRoot.mCommand.mExecute = function()
     gTM.abort()
     gAbort = true
     -- Find some way to break waitcompletes and waiting for measurements
+end
+-- FETch?
+gCurrentRoot = gCommandTree["FETCH"]
+gCurrentRoot.mQuery.mExecute = function()
+    waitcomplete() -- May need to change to only wait for trigger model
+    local lStart, lDataAvailable = FindStartIndex()
+    if lDataAvailable == 0 then return end
+    --local lStart = gReadingMemory.readingBuffer.startindex
+    print(FormatBuffer(lStart, gReadingMemory.readingBuffer.n, false))
 end
 -- INITiate[:IMMediate]
 gCurrentRoot = gCommandTree["INITIATE"]
@@ -6478,22 +6524,6 @@ gCurrentRoot.mQuery.mExecute = function()
     gTriggerModel.InitiateMeasurements()
     waitcomplete() -- May need to change to only wait for trigger model
     print(FormatBuffer(gReadingMemory.readingBuffer.startindex, gReadingMemory.readingBuffer.n, true))
-end
--- FETch?
-gCurrentRoot = gCommandTree["FETCH"]
-gCurrentRoot.mQuery.mExecute = function()
-    waitcomplete() -- May need to change to only wait for trigger model
-    local lStart, lDataAvailable = FindStartIndex()
-    if lDataAvailable == 0 then return end
-    --local lStart = gReadingMemory.readingBuffer.startindex
-    print(FormatBuffer(lStart, gReadingMemory.readingBuffer.n, false))
-end
--- DEV:EXIT
--- DEV Command to exit program
-gCurrentRoot = gCommandTree["DEV"]["EXIT"]
-gCurrentRoot.mCommand.mExecute = function()
-    gTM.abort()
-    EndEmulation()
 end
 
 ------------------------------------------------------------------------------
@@ -7630,6 +7660,11 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     end
     if lParameters[2] then
         lFileName = "autoexec"
+    end
+    for name in script.catalog() do
+        if name == lFileName then
+            script.delete(name)            
+        end
     end
     createconfigscript(lFileName)
 end
@@ -9642,7 +9677,182 @@ end
 -- SYSTem:HELP?
 gCurrentRoot = gCommandTree["SYSTEM"]["HELP"]
 gCurrentRoot.mQuery.mExecute = function()
-    print("PLACEHOLDER")
+    local lSupportedCmds = 
+[[*CLS/nquery/\z
+*ESE\z
+*ESR/qonly/\z
+*IDN/qonly/\z
+*OPC\z
+*PSC/qonly/\z
+*RCL/nquery/\z
+*RST/nquery/\z
+*SAV/nquery/\z
+*SRE\z
+*STB/qonly/\z
+*WAI/nquery/\z
+ABORt\z
+CALCulate:AVERage:ALL/qonly/\z
+CALCulate:AVERage:AVERage/qonly/\z
+CALCulate:AVERage:CLEar[:IMMediate]/nquery/\z
+CALCulate:AVERage:COUNt/qonly/\z
+CALCulate:AVERage:MAXimum/qonly/\z
+CALCulate:AVERage:MINimum/qonly/\z
+CALCulate:AVERage:PTPeak/qonly/\z
+CALCulate:AVERage:SDEViation/qonly/\z
+CALCulate:AVERage[:STATe]\z
+CALCulate:CLEar[:IMMediate]/nquery/\z
+CALCulate:LIMit:UPPer[:DATA]\z
+CALCulate:LIMit[:STATe]\z
+CALCulate:LIMit:UPPer[:DATA]\z
+CALCulate:SCALe:DB:REFerence\z
+CALCulate:SCALe:DBM:REFerence\z
+CALCulate:SCALe:FUNCtion\z
+CALCulate:SCALe[:STATe]\z
+CONFigure/qonly/\z
+CONFigure:CAPacitance/nquery/\z
+CONFigure:CONTinuity/nquery/\z
+CONFigure:CURRent:AC/nquery/\z
+CONFigure:CURRent:DC/nquery/\z
+CONFigure:DIODe/nquery/\z
+CONFigure:FREQuency/nquery/\z
+CONFigure:PERiod/nquery/\z
+CONFigure:FRESistance/nquery/\z
+CONFigure:RESistance/nquery/\z
+CONFigure:TEMPerature/nquery/\z
+CONFigure[:VOLTage]:AC/nquery/\z
+CONFigure[:VOLTage]:DC/nquery/\z
+CONFigure[:VOLTage][:DC]:RATio/nquery/\z
+DATA:LAST/qonly/\z
+DATA:POINts:EVENt:THReshold\z
+DATA:POINts/qonly/\z
+DATA:REMove/qonly/\z
+DISPlay[:STATe]\z
+DISPlay:TEXT:CLEar/nquery/\z
+DISPlay:TEXT[:DATA]\z
+DISPlay:VIEW\z
+FETCh/qonly/\z
+INITiate[:IMMediate]/nquery/\z
+MEASure:CAPacitance/qonly/\z
+MEASure:CONTinuity/qonly/\z
+MEASure:CURRent:AC/qonly/\z
+MEASure:CURRent:DC/qonly/\z
+MEASure:DIODe/qonly/\z
+MEASure:FREQuency/qonly/\z
+MEASure:PERiod/qonly/\z
+MEASure:FRESistance/qonly/\z
+MEASure:RESistance/qonly/\z
+MEASure:TEMPerature/qonly/\z
+MEASure[:VOLTage]:AC/qonly/\z
+MEASure[:VOLTage]:DC/qonly/\z
+MEASure[:VOLTage][:DC]:RATio/qonly/\z
+MMEMory:CATalog[:ALL]/qonly/\z
+MMEMory:CDIRectory\z
+MMEMory:LOAD:STATe/nquery/\z
+MMEMory:MDIRectory/nquery/\z
+MMEMory:RDIRectory/nquery/\z
+MMEMory:STORe:STATe/nquery/\z
+MMEMory:STATe:VALid/qonly/\z
+MMEMory:STORe:DATA/nquery/\z
+R/qonly/\z
+READ/qonly/\z
+ROUTe:TERMinals/qonly/\z
+SAMPle:COUNt\z
+[SENSe:]CAPacitance:NULL[:STATe]\z
+[SENSe:]CAPacitance:NULL:VALue\z
+[SENSe:]CAPacitance:NULL:VALue:AUTO\z
+[SENSe:]CAPacitance:RANGe\z
+[SENSe:]CAPacitance:RANGe:AUTO\z
+[SENSe:]CURRent:AC:BANDwidth\z
+[SENSe:]CURRent:AC:NULL[:STATe]\z
+[SENSe:]CURRent:AC:NULL:VALue\z
+[SENSe:]CURRent:AC:NULL:VALue:AUTO\z
+[SENSe:]CURRent:AC:RANGe\z
+[SENSe:]CURRent:AC:RANGe:AUTO\z
+[SENSe:]CURRent:AC:TERMinals/qonly/\z
+[SENSe:]CURRent[:DC]:NPLC\z
+[SENSe:]CURRent:DC:NULL[:STATe]\z
+[SENSe:]CURRent:DC:NULL:VALue\z
+[SENSe:]CURRent:DC:NULL:VALue:AUTO\z
+[SENSe:]CURRent:DC:RANGe\z
+[SENSe:]CURRent:DC:RANGe:AUTO\z
+[SENSe:]CURRent:DC:TERMinals/qonly/\z
+[SENSe:]CURRent[:DC]:ZERO:AUTO\z
+[SENSe:]FREQuency:NULL[:STATe]\z
+[SENSe:]FREQuency:NULL:VALue\z
+[SENSe:]FREQuency:NULL:VALue:AUTO\z
+[SENSe:]FRESistance:NPLC\z
+[SENSe:]FRESistance:NULL[:STATe]\z
+[SENSe:]FRESistance:NULL:VALue\z
+[SENSe:]FRESistance:NULL:VALue:AUTO\z
+[SENSe:]FRESistance:RANGe\z
+[SENSe:]FRESistance:RANGe:AUTO\z
+[SENSe:]FUNCtion[:ON]\z
+[SENSe:]PERiod:NULL[:STATe]\z
+[SENSe:]PERiod:NULL:VALue\z
+[SENSe:]PERiod:NULL:VALue:AUTO\z
+[SENSe:]RESistance:NPLC\z
+[SENSe:]RESistance:NULL[:STATe]\z
+[SENSe:]RESistance:NULL:VALue\z
+[SENSe:]RESistance:NULL:VALue:AUTO\z
+[SENSe:]RESistance:RANGe\z
+[SENSe:]RESistance:RANGe:AUTO\z
+[SENSe:]RESistance:ZERO:AUTO\z
+[SENSe:]TEMPerature:NPLC\z
+[SENSe:]TEMPerature:NULL[:STATe]\z
+[SENSe:]TEMPerature:NULL:VALue\z
+[SENSe:]TEMPerature:NULL:VALue:AUTO\z
+[SENSe:]TEMPerature:TRANsducer:FRTD:RESistance[:REFerence]\z
+[SENSe:]TEMPerature:TRANsducer:RTD:RESistance[:REFerence]\z
+[SENSe:]TEMPerature:TRANsducer:TYPE\z
+[SENSe:]TEMPerature:ZERO:AUTO\z
+[SENSe:]VOLTage:AC:BANDwidth\z
+[SENSe:]VOLTage:AC:NULL[:STATe]\z
+[SENSe:]VOLTage:AC:NULL:VALue\z
+[SENSe:]VOLTage:AC:NULL:VALue:AUTO\z
+[SENSe:]VOLTage:AC:RANGe\z
+[SENSe:]VOLTage:AC:RANGe:AUTO\z
+[SENSe:]VOLTage:DC:NULL[:STATe]\z
+[SENSe:]VOLTage:DC:NULL:VALue\z
+[SENSe:]VOLTage:DC:NULL:VALue:AUTO\z
+[SENSe:]VOLTage:DC:RANGe\z
+[SENSe:]VOLTage:DC:RANGe:AUTO\z
+[SENSe:]VOLTage[:DC]:NPLC\z
+[SENSe:]VOLTage[:DC]:ZERO:AUTO\z
+STATus:OPERation:CONDition/qonly/\z
+STATus:OPERation:ENABle\z
+STATus:OPERation[:EVENt]/qonly/\z
+STATus:PRESet/nquery/\z
+STATus:QUEStionable:CONDition/qonly/\z
+STATus:QUEStionable:ENABle\z
+STATus:QUEStionable[:EVENt]/qonly/\z
+SYSTem:BEEPer[:IMMediate]/nquery/\z
+SYSTem:BEEPer:STATe\z
+SYSTem:COMMunicate:GPIB:ADDRess\z
+SYSTem:COMMunicate:LAN:DHCP\z
+SYSTem:COMMunicate:LAN:GATeway\z
+SYSTem:COMMunicate:LAN:IPADdress\z
+SYSTem:COMMunicate:LAN:MAC/qonly/\z
+SYSTem:COMMunicate:LAN:SMASk\z
+SYSTem:COMMunicate:LAN:TELNet:PROMpt/qonly/\z
+SYSTem:DATE\z
+SYSTem:ERRor[:NEXT]/qonly/\z
+SYSTem:HELP/qonly/\z
+SYSTem:IDENtify\z
+SYSTem:LABel\z
+SYSTem:LFRequency/qonly/\z
+SYSTem:LOCal/nquery/\z
+SYSTem:PRESet/nquery/\z
+SYSTem:TIME\z
+SYSTem:VERSion/qonly/\z
+TRIGger:COUNt\z
+TRIGger:DELay\z
+TRIGger:DELay:AUTO\z
+TRIGger:SLOPe\z
+TRIGger:SOURce\z
+UNIT:TEMPerature]]
+    local lBlockLength = string.format("%d", string.len(lSupportedCmds))
+    local lNumLength = string.format("%d", string.len(lBlockLength))
+    print(string.format("#%s%s\n%s", lNumLength, lBlockLength, lSupportedCmds))
 end
 -- SYSTem:IDENtify {DEFault|AT34461A|HP34401A}*
 gCurrentRoot = gCommandTree["SYSTEM"]["IDENTIFY"]
