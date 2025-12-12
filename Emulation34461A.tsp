@@ -1,4 +1,4 @@
---loadandrunscript Emulation34461A
+loadandrunscript Emulation34461A
 
 --============================================================================
 --
@@ -8,14 +8,13 @@
 --      Reset DMM6500 to 34461A defaults
 -- 2) Initialize34461A()
 --      Reset DMM6500 to 34461A defaults and prepare for emulation
--- 3) Execute34461A
+-- 3) Execute34461A()
+--      Execute a single 34461A SCPI message
 -- 4) Engine34461A
+--      Put the DMM6500 in an emulation state
+-- 5) EndEmulation()
+--      Set all globals to nil and collect garbage
 --      
---
--- MAJOR STRUCTURES TO BE AWARE OF
--- gCommandTree
--- gAccessors
--- gStateVariables
 --============================================================================
 
 --============================================================================
@@ -6999,8 +6998,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Capacitance
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to Capacitance defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetCapacitance()
     gSetFunctionAttributes.SetCapacitance()
     gReadingMemory.clear()
@@ -7025,8 +7022,6 @@ gCurrentRoot.mCommand.mExecute = function()
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Continuity
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gReadingMemory.clear()
     gReadingMemory.statistics.clear()
     ResetLimits()
@@ -7039,8 +7034,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.AC_Current
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to AC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetACCurrent()
     gSetFunctionAttributes.SetACCurrent()
     gReadingMemory.statistics.clear()
@@ -7067,8 +7060,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.DC_Current
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to AC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetDCCurrent()
     gSetFunctionAttributes.SetDCCurrent()
     gReadingMemory.clear()
@@ -7093,8 +7084,6 @@ gCurrentRoot.mCommand.mExecute = function()
     local lMeasFunc = gInstrumentState.Measure_Function
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Diode
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gReadingMemory.clear()
     gReadingMemory.statistics.clear()
     ResetLimits()
@@ -7107,8 +7096,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Frequency
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to DC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetFrequency()
     gSetFunctionAttributes.SetFrequency()
     gReadingMemory.clear()
@@ -7123,8 +7110,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.FResistance
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to Resistance defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetFResistance()
     gSetFunctionAttributes.SetFResistance()
     gReadingMemory.clear()
@@ -7151,8 +7136,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Period
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to DC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetPeriod()
     gSetFunctionAttributes.SetPeriod()
     gReadingMemory.clear()
@@ -7167,8 +7150,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Resistance
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to Resistance defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetResistance()
     gSetFunctionAttributes.SetResistance()
     gReadingMemory.clear()
@@ -7195,8 +7176,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.AC_Voltage
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to AC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetACVoltage()
     gSetFunctionAttributes.SetACVoltage()
     gReadingMemory.statistics.clear()
@@ -7224,8 +7203,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Temperature
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to DC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetTemperature()
     gSetFunctionAttributes.SetTemperature()
     gReadingMemory.clear()
@@ -7242,8 +7219,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to DC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
     gReadingMemory.clear()
@@ -7270,8 +7245,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     lMeasFunc.value = gInstrumentAttributes.Meas_Functions.Ratio
     lMeasFunc.setter(lMeasFunc.value.DMM_Enum)
     -- Reset to DC measurement defaults
-    gResetFunctionVariables.ResetGeneral()
-    gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
     gReadingMemory.clear()
@@ -10019,7 +9992,7 @@ end
 gCurrentRoot = gCommandTree["SYSTEM"]["LOCAL"]
 gCurrentRoot.mCommand.mExecute = function()
     gTM.abort()
-    EndEmulation()
+    --EndEmulation()
 end
 -- SYSTem:PRESet
 gCurrentRoot = gCommandTree["SYSTEM"]["PRESET"]
@@ -10057,7 +10030,7 @@ end
 -- SYSTem:VERSion?
 gCurrentRoot = gCommandTree["SYSTEM"]["VERSION"]
 gCurrentRoot.mQuery.mExecute = function()
-    print(1994.0)
+    print("1994.0")
 end
 
 ------------------------------------------------------------------------------
@@ -10348,11 +10321,11 @@ gCurrentRoot = gCommandTree
 
 Initialize34461A()
 
--- display.prompt(
---     display.BUTTONS_OK,
---     "Instrument emulation initialized"
--- )
--- beeper.beep(0.15, 680)
-Engine34461A()
+display.prompt(
+    display.BUTTONS_OK,
+    "Instrument emulation initialized"
+)
+beeper.beep(0.15, 680)
+--Engine34461A()
 
---endscript
+endscript
