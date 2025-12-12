@@ -28,7 +28,6 @@
 
 reset()
 
-local gPLC = localnode.linefreq -- Power Line Frequency
 local gDisplayErrors = true     -- Display errors to screen
 local gErrorReadback = false    -- Send errors back when they occur
 
@@ -38,10 +37,7 @@ local gErrorReadback = false    -- Send errors back when they occur
 --
 --============================================================================
 
-local gDisplayVariables = {}
-gDisplayVariables.mDisplayScreen = display.SCREEN_HOME
 display.changescreen(display.SCREEN_USER_SWIPE)
-
 -- Loading Message
 display.clear()
 if localnode.model == "DMM6500" then
@@ -52,7 +48,7 @@ else
     display.settext(display.TEXT1, "Model not supported")
     display.settext(display.TEXT2, "Script requires DMM6500")
     delay(2)
-	display.changescreen(gDisplayVariables.mDisplayScreen)
+	display.changescreen(display.SCREEN_HOME)
 	exit()
 end
 
@@ -69,40 +65,19 @@ local gDEVMODE = true
 local gInitialized = false      -- Has instrument been initialized
 local gCommandTree              -- This structure will all commands including their paths and execution functions
 local gErrorQueue = {}          -- This is the errorqueue structure
-local gTriggerModel = {}
+local gTriggerModel = {}        -- Contains the measurement trigger model and it's functions
 gTriggerModel.EndTriggerModel = NullFunction
-local quesStatus    = {}
-local operStatus    = {}
-local standardEvent = {}
+local quesStatus    = {}        -- Questionable data register
+local operStatus    = {}        -- Standard operation register
+local standardEvent = {}        -- Standard Event Register
 
 local StatusModel   = {SetCondition = NullFunction}
 
-local gAccessors = {}               -- Setter and getter functions 
-local gRemoteComm = ki.remotecomm   -- Internal command that recieves instrument communication
-local gAbort = false
+local gAccessors = {}           -- Setter and getter functions 
+local gAbort = false            -- Indicates an abort has been sent
 
---[[BUFFER VARIABLES FOR MEASUREMENTS]]
--- Initialize the reading buffer as described in 34461A manual
-local gReadingMemory =
-{
-    bufferSize = 100000,
-    readingBuffer = nil,
-    lastRemoved = -1,       -- Timestamp of the last buffer reading to be removed
-    units = "VDC",          -- Buffer reading units
-    lastAvgRemoved = -1,    -- Timestamp of the last buffer reading with stats cleared
-    statistics = 
-    {
-        average     = 0,
-        count       = 0,
-        max         = 0,
-        min         = 0,
-        ptpeak      = 0,
-        sdeviation  = 0,
-    },
-}
--- This sacrifices some accuracy, buffer size is 100,000 not 10,000 like 34461A
-gReadingMemory.readingBuffer = defbuffer1
-gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
+local gDisplayText  = ""        -- Text displayed on screen
+local gDisplayTextVar = nil     -- Variable for text display
 
 -- Byte representation of commonly used characters
 local gCharCodes =
@@ -138,11 +113,9 @@ local gCharCodes =
     mZero           = string.byte([[0]]),
 }
 
--- Useful parser strings
-local gNonProgMnemonic  = "[^%a%d_]"
-local gNonWhitespace    = "[^%s]"
-
--- Special commands, not currently implemented
+-- Internal command that recieves instrument communication
+local gRemoteComm   = ki.remotecomm
+-- Special commands
 local gSpecialCommands =
 {
     ["$Empty"] =
@@ -153,10 +126,10 @@ local gSpecialCommands =
     {
         mCommand = {mPriority = true},
     },
-    ["*TRG"] =
-    {
-        mCommand = {mPriority = true},
-    },
+    --["*TRG"] =
+    --{
+    --    mCommand = {mPriority = true},
+    --},
     [gRemoteComm.types.DCL] =
     {
         mCommand = {mPriority = true},
@@ -183,19 +156,49 @@ gSpecialCommands["$Empty"].mCommand.mExecute = NullFunction
 --
 --============================================================================
 
+-- General alaising
 local gMathAbs      = math.abs
 local gTypeDcl      = gRemoteComm.types.DCL
-local Print         = gRemoteComm.partialprint
 local gMeasure      = dmm.measure
 local gRel          = gMeasure.rel
 local gTM           = trigger.model
 local gTriggerTimer = trigger.timer[1]
-local gDisplayText  = ""
-local gDisplayTextVar = nil
+local gPLC          = localnode.linefreq -- Power Line Frequency
+local gLimit        = gMeasure.limit[1]
 
+-- Useful parser strings
+local gNonProgMnemonic  = "[^%a%d_]"
+local gNonWhitespace    = "[^%s]"
+
+-- NAN and Infinity constants
 local gNan = 9.91e37
 local gInf = 9.90e37
 
+--[[BUFFER VARIABLES FOR MEASUREMENTS]]
+-- Initialize the reading buffer as described in 34461A manual
+local gReadingMemory =
+{
+    bufferSize = 100000,
+    readingBuffer = nil,
+    lastRemoved = -1,       -- Timestamp of the last buffer reading to be removed
+    units = "VDC",          -- Buffer reading units
+    lastAvgRemoved = -1,    -- Timestamp of the last buffer reading with stats cleared
+    statistics = 
+    {
+        average     = 0,
+        count       = 0,
+        max         = 0,
+        min         = 0,
+        ptpeak      = 0,
+        sdeviation  = 0,
+    },
+}
+-- This sacrifices some accuracy, buffer size is 100,000 not 10,000 like 34461A
+-- Must use defbuffer1 to get readings to display on screen
+gReadingMemory.readingBuffer = defbuffer1
+gReadingMemory.readingBuffer.fillmode = buffer.FILL_CONTINUOUS
+
+-- Stores data for the last measurement taken
 local gLastMeasurement =
 {
     value = gNan,
@@ -204,6 +207,7 @@ local gLastMeasurement =
 }
 
 -- Getter and setter functions increase performance
+-- Measure attributes
 gAccessors.mSetMeasureFunction      = makesetter(gMeasure, "func")
 gAccessors.mSetMeasureRange         = makesetter(gMeasure, "range")
 gAccessors.mSetMeasureAutorange     = makesetter(gMeasure, "autorange")
@@ -229,16 +233,17 @@ gAccessors.mGetAutozeroEnable       = makegetter(gMeasure.autozero, "enable")
 gAccessors.mGetExtinSlope           = makegetter(trigger.extin, "edge")
 gAccessors.mGetTerminals            = makegetter(dmm, "terminals")
 
+-- Trigger timer attributes
 gAccessors.mSetTriggerTimerCount    = makesetter(gTriggerTimer, "count")
 gAccessors.mSetTriggerTimerStimulus = makesetter(gTriggerTimer.start, "stimulus")
 gAccessors.mSetTriggerTimerDelay    = makesetter(gTriggerTimer, "delay")
 gAccessors.mSetTriggerTimerEnable   = makesetter(gTriggerTimer, "enable")
 
+-- Status model attributes
 gAccessors.mGetStatusCondition      = makegetter(status, "condition")
 gAccessors.mGetStatusStandardEvent  = makegetter(status.standard, "event")
 
-local gLimit = gMeasure.limit[1]
-
+-- Limit attributes
 gAccessors.mGetLimitEnable          = makegetter(gLimit, "enable")
 gAccessors.mGetLimitFail            = makegetter(gLimit, "fail")
 gAccessors.mGetLimitHigh            = makegetter(gLimit.high, "value")
@@ -248,6 +253,7 @@ gAccessors.mSetLimitEnable          = makesetter(gLimit, "enable")
 gAccessors.mSetLimitHigh            = makesetter(gLimit.high, "value")
 gAccessors.mSetLimitLow             = makesetter(gLimit.low, "value")
 
+-- DB/DBM attributes
 gAccessors.mGetDBReference          = makegetter(gMeasure, "dbreference")
 gAccessors.mGetDBMReference         = makegetter(gMeasure, "dbmreference")
 gAccessors.mGetMeasureUnit          = makegetter(gMeasure, "unit")
@@ -256,6 +262,7 @@ gAccessors.mSetDBReference          = makesetter(gMeasure, "dbreference")
 gAccessors.mSetDBMReference         = makesetter(gMeasure, "dbmreference")
 gAccessors.mSetMeasureUnit          = makesetter(gMeasure, "unit")
 
+-- Transducer attributes
 gAccessors.mGetTransducer           = makegetter(gMeasure, "transducer")
 gAccessors.mGetTranRef              = makegetter(gMeasure, "rtdzero")
 
@@ -264,9 +271,9 @@ gAccessors.mSetTranRef              = makesetter(gMeasure, "rtdzero")
 gAccessors.mSetTwoRTD               = makesetter(gMeasure, "twortd")
 gAccessors.mSetFourRTD              = makesetter(gMeasure, "fourrtd")
 
+-- Misc attributes
 gAccessors.mGetLimitAudible         = makegetter(gLimit, "audible")
 gAccessors.mSetLimitAudible         = makesetter(gLimit, "audible")
-
 gAccessors.mGetLightstate           = makegetter(display, "lightstate")
 gAccessors.mSetLightstate           = makesetter(display, "lightstate")
 
@@ -279,14 +286,21 @@ gAccessors.mSetLightstate           = makesetter(display, "lightstate")
 --
 --============================================================================
 
-local gPrintEnable = false
-
+------------------------------------------------------------------------------
+--
+--  gRangeTable
+--
+--  An array containing all measure ranges of the DMM 6500 not the 34461A.
+--  This is intended to be immutable except for the Current ranges as the 
+--  terminal selection can allow for 10A or 3A maximums.
+--
+------------------------------------------------------------------------------
 local gRangeTable =
 {
     DC_Voltage      = {100e-3, 1, 10, 100, 1000},
     AC_Voltage      = {100e-3, 1, 10, 100, 750},
-    DC_Current      = {10e-6, 100e-6, 1e-3, 10e-3, 100e-3, 1, 3, 10},   --
-    AC_Current      = {1e-3, 10e-3, 100e-3, 1, 3, 10},                  --
+    DC_Current      = {10e-6, 100e-6, 1e-3, 10e-3, 100e-3, 1, 3, 10},
+    AC_Current      = {1e-3, 10e-3, 100e-3, 1, 3, 10},
     Resistance      = {10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
     FResistance     = {1, 10, 100, 1e3, 10e3, 100e3, 1e6, 10e6, 100e6},
     Continuity      = {1e3},
@@ -294,6 +308,15 @@ local gRangeTable =
     Capacitance     = {1e-9, 10e-9, 100e-9, 1e-6, 10e-6, 100e-6, 1e-3},
 }
 
+------------------------------------------------------------------------------
+--
+--  gOperatingBoundaries
+--
+--  An array containing the max/def/min values for all necessary instrument
+--  attributes. This is intended to be immutable. Details on which values 
+--  comply with the 34461A vs. 6500 are documented inside. 
+--
+------------------------------------------------------------------------------
 local gOperatingBoundaries =
 {
     AC_Current =
@@ -477,36 +500,42 @@ local gOperatingBoundaries =
         },
         DB_Reference =
         {
+            -- Default same as 34461A, max/min are higher/lower than 34461A
             max = 1000,
-            def = 1,
+            def = 0,
             min = 100e-9,
         },
         DBM_Reference =
         {
+            -- Default same as 34461A, max/min are higher/lower than 34461A
             max = 9999,
-            def = 75,
+            def = 600,
             min = 1,
         },
         Sample_Count =
         {
+            -- All values match 34461A
             max = 1000000,
             def = 1,
             min = 1,
         },
         Trigger_Count =
         {
+            -- All values match 34461A
             max = 1000000,
             def = 1,
             min = 1,
         },
         Trigger_Delay =
         {
+            -- All values match 34461A
             max = 3600,
             def = 1,
             min = 0,
         },
     },
 }
+-- Adjust NPLC values if 60 Hz power line frequency
 if gPLC == 60 then
     gOperatingBoundaries.General.Nplc = 
     {
@@ -516,6 +545,27 @@ if gPLC == 60 then
     }
 end
 
+-----------------------------------------------------------------------------------
+--
+--  gInstrumentState
+--
+--  This is the primary array that stores the emulated 34461A instrument state.
+--  It is vital that the values in this array match that of the physical 
+--  DMM6500. 
+--
+--  Each state variable is sorted by what measurement funciton they apply to,
+--  if it applies to all the variable is stored in General. 
+--
+--  Every state variable can have 4 attributes:
+--      value: This is the actual value of the variable, things that require a
+--          TSP enumeration to set (dmm.ON/dmm.OFF) will have their value as 
+--          one of the items in "gInstrumentAttributes"
+--      valueParent: This indicates which item (if any) in gInstrumentAttributes
+--          contains the valid values for this variable.
+--      getter: The corresponding getter function for this variable
+--      setter: The corresponding setter function for this variable
+--
+------------------------------------------------------------------------------------
 local gInstrumentState = 
 {
     Measure_Function =
@@ -555,7 +605,7 @@ local gInstrumentState =
         },
         IDN_String =
         {
-            value = nil
+            value = nil,
         },
         Data_Event_Threshold =
         {
@@ -1102,13 +1152,28 @@ local gInstrumentState =
         },
     },
 }
--- These attributes are shared between 2W and 4W resistance
+-- These attributes are shared between 2W and 4W resistance so they are just alaised together
 gInstrumentState.FResistance.Null_State         = gInstrumentState.Resistance.Null_State
 gInstrumentState.FResistance.Null_Value         = gInstrumentState.Resistance.Null_Value
 gInstrumentState.FResistance.Null_Value_Auto    = gInstrumentState.Resistance.Null_Value_Auto
 gInstrumentState.FResistance.Range_Auto         = gInstrumentState.Resistance.Range_Auto
 gInstrumentState.FResistance.NPLC               = gInstrumentState.Resistance.NPLC
 
+------------------------------------------------------------------------------
+--
+--  gInstrumentAttributes
+--
+--  An array containing valid values for all instrument state variables
+--  that require a DMM6500 enumeration to set. For each attribute all valid
+--  states are listed. Each state has a DMM enumeration and the shorthand
+--  which should be printed when the user queries the value. 
+--
+--  The measurement function states are special, they also include the 
+--  function's default units, the bit to be flipped in the questionable
+--  status register when an overload occurs, and a pointer back to that 
+--  function's state variables so they can be easily traced and reset.
+--
+------------------------------------------------------------------------------
 local gInstrumentAttributes =
 {
     Display_State =
@@ -1362,6 +1427,8 @@ local gInstrumentAttributes =
         },
     }
 }
+
+-- Set the value parents for instrument state variables 
 gInstrumentState.Measure_Function.valueParent           = gInstrumentAttributes.Meas_Functions
 
 gInstrumentState.General.Display_State.valueParent      = gInstrumentAttributes.Display_State
@@ -1428,7 +1495,6 @@ gInstrumentState.Period.Null_Value_Auto.valueParent = gInstrumentAttributes.OnOf
 --  attributes accordingly.
 --
 ------------------------------------------------------------------------------
-
 local CheckTerminals = function()
     local lActiveTerminals = gAccessors.mGetTerminals()
     if lActiveTerminals == dmm.TERMINALS_FRONT then
@@ -1491,8 +1557,7 @@ end
 --
 --  An array containing variable reset functions for each mesurement function
 --
-------------------------------------------------------------------------------
-
+-----------------------------------------------------------------------------
 local gResetFunctionVariables = {
     -- APPLY TO ALL MEASUREMENT FUNCTIONS
     ResetGeneral = function()
@@ -1611,7 +1676,6 @@ local gResetFunctionVariables = {
 --  Reset all script variables to 34461A defaults
 --
 ------------------------------------------------------------------------------
-
 local ResetScriptVariables = function()
         gInstrumentState.Measure_Function.value = gInstrumentAttributes.Meas_Functions.DC_Voltage
         gResetFunctionVariables.ResetGeneral()
@@ -1635,7 +1699,6 @@ end
 --  34461A defaults for each function
 --
 ------------------------------------------------------------------------------
-
 local gSetFunctionAttributes = 
 {
     SetGeneral = function()
@@ -1742,7 +1805,6 @@ local gSetFunctionAttributes =
 --  Reset the DMM 6500 state to 34461A defaults
 --
 ------------------------------------------------------------------------------
-
 local ResetDMMSettings = function()
     reset()
     gAccessors.mSetMeasureFunction(gInstrumentAttributes.Meas_Functions.DC_Voltage.DMM_Enum)
@@ -1772,7 +1834,6 @@ end
 --  Reset the buffer statistics
 --
 ------------------------------------------------------------------------------
-
 gReadingMemory.statistics.clear = function()
     if gReadingMemory.readingBuffer.endindex ~= 0 then
         gReadingMemory.lastAvgRemoved = gReadingMemory.readingBuffer.relativetimestamps[gReadingMemory.readingBuffer.endindex]
@@ -1787,6 +1848,13 @@ gReadingMemory.statistics.clear = function()
     gReadingMemory.statistics.sdeviation    = 0
 end
 
+------------------------------------------------------------------------------
+--
+--  ResetLimits
+--
+--  Reset the measure limits and their condition bits
+--
+------------------------------------------------------------------------------
 local ResetLimits = function()
     gLimit.clear()
     StatusModel.ClearCondition(quesStatus, 12)
@@ -1800,7 +1868,6 @@ end
 --  Reset the DMM 6500 and script variables to 34461A defaults
 --
 ------------------------------------------------------------------------------
-
 ResetDefaults = function ()
     ResetScriptVariables()
     ResetDMMSettings()
@@ -1906,7 +1973,6 @@ local gCurrentRoot
 --  Add a message to the Parser input queue.
 --
 ------------------------------------------------------------------------------
-
 local AddMessage = function (lMessage, lType, lCount)
     local lNewRecord = {mType = lType, mMessage = lMessage, mCount = lCount}
     if gParserState.mLastMessage then
@@ -1927,7 +1993,6 @@ end
 --  will be used. All other interfaces will be ignored.
 --
 ------------------------------------------------------------------------------
-
 local GetNewMessage
 
 local GetCommandMessage = function ()
@@ -1943,7 +2008,6 @@ local GetCommandMessage = function ()
             gParserState.mPartialMessage = nil
             gParserState.mCurrentText = nil
             gParserState.mNextCommand = nil
-            gPrintEnable = false
         end
         AddMessage(lMessage, lType, 1)
     end
@@ -1974,7 +2038,6 @@ GetNewMessage = GetFirstCommandMessage
 --  there is an error, it will return the starting position.
 --
 ------------------------------------------------------------------------------
-
 local ParseBlockLength = function (lText, lStart)
     local lCharCode = string.byte(lText, lStart)
     local lCount
@@ -2016,7 +2079,6 @@ end
 --  left parenthesis.
 --
 ------------------------------------------------------------------------------
-
 local ParseExpression = function (lText, lStart)
     local lLength = string.len(lText)
     local lIndex = lStart + 1
@@ -2047,7 +2109,6 @@ end
 --  delimiter to use.
 --
 ------------------------------------------------------------------------------
-
 local ParseString = function (lText, lStart)
     local lLength = string.len(lText)
     local lQuote = string.sub(lText, lStart, lStart)
@@ -2081,7 +2142,6 @@ end
 -- after removing any intermediate whitespace.
 --
 ------------------------------------------------------------------------------
-
 local ParseNRf = function (lText, lStart)
     local lCharCode
     local lIndex = lStart
@@ -2155,36 +2215,17 @@ local gParserTable = {}
 -- implemented for the parameter.
 --
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterAny = function (lParameter)
     return lParameter
 end
 
 ------------------------------------------------------------------------------
 --
---  ParseParameterBlockData
---
---  Parse a 488.2 block data string.
---
-------------------------------------------------------------------------------
-
-gParserTable.ParseParameterBlockData = function (lParameter)
-    local lCharCode = string.byte(lParameter)
-
-    if lCharCode == gCharCodes.mHash then
-        lCharCode = string.byte(lParameter, 2)
-        return string.sub(lParameter, 3 + lCharCode - gCharCodes.mZero)
-    else
-        return nil, -104
-    end
-end
-
-------------------------------------------------------------------------------
---
 -- ParseParameterBoolean
 --
+-- Parse a boolean value ON|1 is true and OFF|0 is false. 
+--
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterBoolean = function (lParameter)
     local lIndex
     local lLength
@@ -2219,19 +2260,22 @@ end
 --
 -- ParseParameterChoice
 --
+-- This allows for a single parameter to be parsed with multiple types. 
+-- Requires parameter to have mData attribute containing the different
+-- options for parsing. 
+--
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterChoice = function (lParameter, lParseData)
     local lValue, lError
     local lIndex
 
     lParseData = lParseData.mData
     lIndex = 1
+    -- Index through mData
     while lParseData[lIndex] do
+        -- Check if this parser function works
         lValue, lError = lParseData[lIndex].mParse(lParameter, lParseData[lIndex])
-        -- if lError then
-        --     return nil, lError
-        -- end
+        -- If it does, return
         if lValue ~= nil then
             return lValue
         end
@@ -2242,23 +2286,13 @@ end
 
 ------------------------------------------------------------------------------
 --
--- ParseParameterExpression
---
-------------------------------------------------------------------------------
-
-gParserTable.ParseParameterExpression = function (lParameter)
-    if string.byte(lParameter, 1) ~= gCharCodes.mParenLeft then
-        return nil, -104
-    end
-    return lParameter
-end
-
-------------------------------------------------------------------------------
---
 -- ParseParameterName
 --
+-- Parse a parameter that can have a set of names (ex. RIGHT|LEFT). This
+-- requires that the parameter has mNames attribute. The index of mNames
+-- is the name and the value is what should be returned.
+--
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterName = function (lParameter, lParseData)
     local lParameterKey = lParseData.mNames[lParameter]
 
@@ -2279,8 +2313,10 @@ end
 --
 -- ParseParameterNameString
 --
+-- Similar to ParseParameterName this takes a string that can be a set of 
+-- options. However the input should have quotes.
+--
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterNameString = function (lParameter, lParseData)
     local lError
 
@@ -2300,42 +2336,12 @@ end
 
 ------------------------------------------------------------------------------
 --
--- ParseParameterNDN
---
--- This parser will accept an NDN or an NRf. If the number is NRf, it will
--- be converted to an integer.
---
-------------------------------------------------------------------------------
-
-gParserTable.ParseParameterNDN = function (lParameter)
-    local lCharCode
-
-    lCharCode = string.byte(lParameter, 1)
-    if lCharCode == gCharCodes.mHash then
-        lCharCode = string.byte(lParameter, 2)
-        lParameter = string.sub(lParameter, 3)
-        if lCharCode == gCharCodes.mH then
-            return tonumber(lParameter, 16) or 0
-        elseif lCharCode == gCharCodes.mQ then
-            return tonumber(lParameter, 8) or 0
-        elseif lCharCode == gCharCodes.mB then
-            return tonumber(lParameter, 2) or 0
-        else
-            return nil, -104
-        end
-    end
-    return gParserTable.ParseParameterIntegerNRf(lParameter)
-end
-
-------------------------------------------------------------------------------
---
 -- ParseParameterNRf
 --
 -- This parser will accept an NRf number. This does not include INF. If the
 -- parameter is accepted, it is converted to a number.
 --
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterNRf = function (lParameter)
     local lIndex = ParseNRf(lParameter, 1)
     if lIndex > string.len(lParameter) then
@@ -2356,7 +2362,6 @@ end
 -- This parser will accept an NRf number and convert it to an integer.
 --
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterIntegerNRf = function (lParameter)
     local lValue, lError
 
@@ -2373,79 +2378,22 @@ end
 
 ------------------------------------------------------------------------------
 --
--- ParseParameterNumList
---
-------------------------------------------------------------------------------
-
-gParserTable.ParseParameterNumList = function (lParameter)
-    local lList = {}
-    local lCount
-    local lCharCode
-    local lLength = string.len(lParameter) - 1
-    local lIndex
-    local lIndex2
-    local lIndex3
-    local lText
-    local lError
-
-    lCharCode = string.byte(lParameter, 1)
-    if lCharCode ~= gCharCodes.mParenLeft then
-        return nil, -104
-    end
-    -- We don't need to verify the last parenthesis because the expression
-    -- parser will guarantee they are matched and there is nothing after the
-    -- last one.
-
-    -- Break the list into raw text pairs
-    lCount = 0
-    lIndex2, lIndex3 = string.find(lParameter, "^ *", 2)
-    lIndex = lIndex3 + 1
-    while lIndex < lLength do
-        lIndex2, lIndex3 = string.find(lParameter, " *, *", lIndex)
-        if not lIndex2 then
-            lIndex2 = string.find(lParameter, " *[)]$", lIndex)
-            lIndex3 = lLength
-        end
-        if lIndex2 == lIndex then
-            -- Empty entry
-            return nil, -121
-        end
-        lText = string.sub(lParameter, lIndex, lIndex2 - 1)
-        lIndex = lIndex3 + 1
-
-        lIndex2 = string.find(lText, ":", 1)
-        lCount = lCount + 2
-        if lIndex2 then
-            lList[lCount - 1] = string.sub(lText, 1, lIndex2 - 1)
-            lList[lCount] = string.sub(lText, lIndex2 + 1)
-        else
-            lList[lCount - 1] = lText
-            lList[lCount] = lText
-        end
-    end
-
-    lIndex = 1
-    while lIndex <= lCount do
-        lList[lIndex], lError = gParserTable.ParseParameterIntegerNRf(lList[lIndex])
-        if lError then
-            return nil, -500
-        end
-        lIndex = lIndex + 1
-    end
-
-    return lList
-end
-
-------------------------------------------------------------------------------
---
 -- ParseParameterString
 --
+-- Parses a string, checking for and removing the quotes on either end.
+--
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterString = function (lParameter)
     local lCharCode
-
     lCharCode = string.byte(lParameter, 1)
+
+    -- Check that quotes are present and match
+    if not((lCharCode == gCharCodes.mSingleQuote or lCharCode == gCharCodes.mDoubleQuote)
+    and lCharCode == string.byte(lParameter, -1)) then
+        return nil, -104
+    end
+
+    
     if lCharCode == gCharCodes.mSingleQuote then
         lParameter = string.gsub(string.sub(lParameter, 2, -2), [['']], [[']])
     elseif lCharCode == gCharCodes.mDoubleQuote then
@@ -2458,34 +2406,40 @@ end
 
 ------------------------------------------------------------------------------
 --
--- ParseParameterAddress Does not throw error for leading zeros
+-- ParseParameterAddress 
+--  
+-- Parses a dot notation IP-address. Does not throw error for leading zeros
 --
 ------------------------------------------------------------------------------
-
 gParserTable.ParseParameterAddress = function (lParameter)
     local lCharCode
     local lStringLen = string.len(lParameter)-2
-    local lOctet = 0
-    local lOctetDigits = 0
-    local lDotCount = 0
+    local lOctet = 0        -- The numeric value of the current octet
+    local lOctetDigits = 0  -- The number of digits in the octet
+    local lDotCount = 0     -- Number of dots detected
 
     lCharCode = string.byte(lParameter, 1)
+    -- Check that quotes are proper and present
     if (lCharCode == gCharCodes.mSingleQuote or lCharCode == gCharCodes.mDoubleQuote)
     and lCharCode == string.byte(lParameter, -1) then
-        --lParameter = string.sub(lParameter, 2, -2)
+        -- Iterate through chatavters
         for i=1, lStringLen do
             lCharCode = string.byte(lParameter, i+1)
+            -- If digits
             if lCharCode >= gCharCodes.mZero and lCharCode <= gCharCodes.mNine then
-                lOctet = (lOctet*10) + (lCharCode - gCharCodes.mZero)
-                lOctetDigits = lOctetDigits + 1
+                lOctet = (lOctet*10) + (lCharCode - gCharCodes.mZero) -- Update lOctet
+                lOctetDigits = lOctetDigits + 1 -- Update lOctetDigits
                 if lOctet > 255 then
                     return nil, -104
                 end
+            -- If dot
             elseif lCharCode == gCharCodes.mDot then
+                -- Only true if there was an empty octet
                 if lOctetDigits == 0 then
                     return nil, -104
                 else
                     lDotCount = lDotCount + 1
+                    -- Only true if there was an extra octet
                     if lDotCount > 3 then
                         return nil, -104
                     end
@@ -2503,6 +2457,14 @@ gParserTable.ParseParameterAddress = function (lParameter)
     return lParameter
 end
 
+------------------------------------------------------------------------------
+--
+-- ParseFileFolderName 
+--  
+-- Parses a file or folder name, not including any quotes. 
+-- Acceptable characters are alphanumeric, '-'', '_', '.'
+--
+------------------------------------------------------------------------------
 gParserTable.ParseFileFolderName = function(lParameter)
     
     if string.len(lParameter) == 0 then 
@@ -2524,6 +2486,14 @@ gParserTable.ParseFileFolderName = function(lParameter)
     return lParameter
 end
 
+------------------------------------------------------------------------------
+--
+-- ParseFilePath 
+--  
+-- Parses a filepath, takes in a 34461A formatted filepath and returns a
+-- DMM6500 formatted filepath.
+--
+------------------------------------------------------------------------------
 gParserTable.ParseFilePath = function(lParameter)
     -- Check that quotes are present and match
     if not((string.byte(lParameter, 1) == gCharCodes.mSingleQuote or string.byte(lParameter, 1) == gCharCodes.mDoubleQuote)
@@ -2543,12 +2513,12 @@ gParserTable.ParseFilePath = function(lParameter)
     local lReturnString
     local lError
 
+    -- Iteratively check that all subdirectories and files are valid
     while slashIndex ~= nil do
         lReturnString, lError = gParserTable.ParseFileFolderName(string.sub(lParameter, currentIndex, slashIndex-1))
         if lError then return nil, lError end
         currentIndex = slashIndex+1
         slashIndex = string.find(lParameter, [[\]], currentIndex)
-        --print(currentIndex, slashIndex)
     end
     lReturnString, lError = gParserTable.ParseFileFolderName(string.sub(lParameter, currentIndex, -2))
     if lError then return nil, lError end
@@ -2569,14 +2539,14 @@ end
 --
 ------------------------------------------------------------------------------
 
-gParserTable.mParseAny          = {mParse = gParserTable.ParseParameterAny, mOptional = true}
-gParserTable.mParseNRf          = {mParse = gParserTable.ParseParameterNRf}
-gParserTable.mParseNRfOptional  = {mParse = gParserTable.ParseParameterNRf, mOptional = true}
-gParserTable.mParseBooleanKeywords = {mParse = gParserTable.ParseParameterBoolean}
-gParserTable.mParseInteger      = {mParse = gParserTable.ParseParameterIntegerNRf}
-gParserTable.mParseString       = {mParse = gParserTable.ParseParameterString}
-gParserTable.mParseAddress      = {mParse = gParserTable.ParseParameterAddress}
-gParserTable.mParseFilePath     = {mParse = gParserTable.ParseFilePath}
+gParserTable.mParseAny              = {mParse = gParserTable.ParseParameterAny, mOptional = true}
+gParserTable.mParseNRf              = {mParse = gParserTable.ParseParameterNRf}
+gParserTable.mParseNRfOptional      = {mParse = gParserTable.ParseParameterNRf, mOptional = true}
+gParserTable.mParseBooleanKeywords  = {mParse = gParserTable.ParseParameterBoolean}
+gParserTable.mParseInteger          = {mParse = gParserTable.ParseParameterIntegerNRf}
+gParserTable.mParseString           = {mParse = gParserTable.ParseParameterString}
+gParserTable.mParseAddress          = {mParse = gParserTable.ParseParameterAddress}
+gParserTable.mParseFilePath         = {mParse = gParserTable.ParseFilePath}
 gParserTable.mParseDCVoltageRangeKeywords =
 {
     mParse = gParserTable.ParseParameterName,
@@ -3862,14 +3832,6 @@ end
 --  Execution functions
 --
 --============================================================================
-------------------------------------------------------------------------------
--- script initialization functions
---[[
-    These functions are used to initialize and setup the script
---]]
------------------------------------------------------------------------------
-
-local Init = {}
 
 ------------------------------------------------------------------------------
 --
@@ -3885,7 +3847,7 @@ Initialize34461A = function ()
     gInitialized = true
     --reset()
     ResetDefaults()
-    dmm.measure.limit[1].autoclear = dmm.OFF
+    gLimit.autoclear = dmm.OFF
     format.byteorder = format.NORMAL
     localnode.prompts = localnode.DISABLE
     localnode.prompts4882 = localnode.DISABLE
@@ -3931,7 +3893,7 @@ local PriorityExecute = function ()
         GetNewMessage()
     end
 
-    if gPrintEnable or gParserState.mNextCommand then
+    if gParserState.mNextCommand then
         -- The only time this will be true is if a previous call to this
         -- function found a non-priority command that it did not execute.
         return
@@ -3978,7 +3940,7 @@ end
 --
 --  ScanUpdatedValues
 --
---  Check the DMM settings and update local variables
+--  Check the DMM6500 state and update local variables
 --
 ------------------------------------------------------------------------------
 
@@ -4012,6 +3974,43 @@ local ScanUpdatedValues = function()
                 lValue.value = lCurrentValue
             end
         end
+    end
+    -- Iterate through general state variables and
+    -- make them matchthe current configuration
+    for lKey, lValue in pairs(gInstrumentState.General) do
+        if lValue.getter then
+            local lCurrentValue = lValue.getter()
+            -- If the value has enumerations, iterate through those and set appropriately
+            if lValue.valueParent then
+                for _, pValue in pairs(lValue.valueParent) do
+                    if lCurrentValue == pValue.DMM_Enum 
+                    or lCurrentValue == pValue.shorthand then
+                        lValue.value = pValue
+                        break
+                    end
+                end
+            else
+                lValue.value = lCurrentValue
+            end
+        end
+    end
+    -- Check general settings that don't have getter/setter but are not internal to script
+    -- Set display string to stored value
+    local lDisplayString = gInstrumentState.General.Display_String.value
+    if lDisplayString == "" then
+        display.clear()
+    else
+        display.clear()
+        display.settext(display.TEXT1, lDisplayString)
+    end
+    -- Change screen to match stored value
+    display.changescreen(gInstrumentState.General.Display_View.value.DMM_Enum)
+    -- Check scale state
+    local lScaleState = gAccessors.mGetMeasureUnit()
+    if (lScaleState == dmm.UNIT_DB or lScaleState == dmm.UNIT_DBM) then
+        gInstrumentState.General.Scale_State = gInstrumentAttributes.OnOff.ON
+    else
+        gInstrumentState.General.Scale_State = gInstrumentAttributes.OnOff.OFF
     end
 end
 
@@ -4077,19 +4076,6 @@ Engine34461A = function ()
             while eventlog.getcount() > 0 do
                 local eventNumber, message, severity, nodeID, timeSeconds, timeNanoSeconds = eventlog.next()
                 if severity < 3 then 
-                    -- Beep on error
-                    if gInstrumentState.General.Beeper_State.value == gInstrumentAttributes.Limit_Beeper.ON then
-                        beeper.beep(0.15, 340)
-                    end
-                    if gDisplayErrors then
-                        if gErrorQueue.lDisplay then
-                            display.delete(gErrorQueue.lDisplay)
-                        end
-                        gErrorQueue.lDisplay = display.prompt(
-                            display.BUTTONS_OK,
-                            eventNumber .. " " .. message
-                        )
-                    end
                     if gErrorReadback then
                         print(eventNumber .. " " .. message)
                     end
@@ -4123,17 +4109,25 @@ end
 
 --============================================================================
 --
---  Utility functions
+--  Status Mocel
 --
 --============================================================================
 
--- Status model registers
+-- Initialize status model registers
 quesStatus        = {mCondition = 0, mEvent = 0, mEventEnable = 0, mSummary = 4}
 operStatus        = {mCondition = 0, mEvent = 0, mEventEnable = 0, mSummary = 8}
 standardEvent     = {                mEvent = 0, mEventEnable = 0, mSummary = 6}
 
 StatusModel       = {mStatus = 0, mEventEnable = 0}
 
+------------------------------------------------------------------------------
+--
+--  SetCondition
+--
+--  Set a bit in the specified condition register. Note: lBit is the index
+--  of the bit and is 1 indexed not 0 indexed.
+--
+------------------------------------------------------------------------------
 StatusModel.SetCondition = function (lRegister, lBit)
     local lCondition = bit.set(lRegister.mCondition, lBit)
     if lCondition ~= lRegister.mCondition then
@@ -4142,10 +4136,26 @@ StatusModel.SetCondition = function (lRegister, lBit)
     end
 end
 
+------------------------------------------------------------------------------
+--
+--  ClearCondition
+--
+--  Clears a bit in the specified condition register. Note: lBit is the index
+--  of the bit and is 1 indexed not 0 indexed.
+--
+------------------------------------------------------------------------------
 StatusModel.ClearCondition = function (lRegister, lBit)
     lRegister.mCondition = bit.clear(lRegister.mCondition, lBit)
 end
 
+------------------------------------------------------------------------------
+--
+--  SetEvent
+--
+--  Set a bit in the specified event register. Note: lBit is the index
+--  of the bit and is 1 indexed not 0 indexed.
+--
+------------------------------------------------------------------------------
 StatusModel.SetEvent = function (lRegister, lBit)
     local lEvent = bit.set(lRegister.mEvent, lBit)
     if lEvent ~= lRegister.mEvent then
@@ -4156,6 +4166,13 @@ StatusModel.SetEvent = function (lRegister, lBit)
     end
 end
 
+------------------------------------------------------------------------------
+--
+--  SetEvents
+--
+--  Set multiple bits in the specified event register with a mask.
+--
+------------------------------------------------------------------------------
 StatusModel.SetEvents = function (lRegister, lMask)
     local lEvent = bit.bitor(lRegister.mEvent, lMask)
     if lEvent ~= lRegister.mEvent then
@@ -4166,11 +4183,26 @@ StatusModel.SetEvents = function (lRegister, lMask)
     end
 end
 
+------------------------------------------------------------------------------
+--
+--  ClearEvent
+--
+--  Clear a bit in the specified event register. Note: lBit is the index
+--  of the bit and is 1 indexed not 0 indexed.
+--
+------------------------------------------------------------------------------
 StatusModel.ClearEvent = function (lRegister)
     lRegister.mEvent = 0
     StatusModel.ClearSummary(lRegister.mSummary)
 end
 
+------------------------------------------------------------------------------
+--
+--  SetEnable
+--
+--  Set the specified enable register to lValue.
+--
+------------------------------------------------------------------------------
 StatusModel.SetEnable = function (lRegister, lValue)
     lRegister.mEventEnable = lValue
     if lRegister.mEvent then
@@ -4184,6 +4216,14 @@ StatusModel.SetEnable = function (lRegister, lValue)
     end
 end
 
+------------------------------------------------------------------------------
+--
+--  SetEnable
+--
+--  Set the specified enable register to lValue.Note: lBit is the index
+--  of the bit and is 1 indexed not 0 indexed.
+--
+------------------------------------------------------------------------------
 StatusModel.SetSummary = function (lBit)
     local lStatus = bit.set(StatusModel.mStatus, lBit)
     if lStatus ~= StatusModel.mStatus then
@@ -4196,6 +4236,14 @@ StatusModel.SetSummary = function (lBit)
     end
 end
 
+------------------------------------------------------------------------------
+--
+--  SetSummary
+--
+--  Clear the specified enable register to lValue.Note: lBit is the index
+--  of the bit and is 1 indexed not 0 indexed.
+--
+------------------------------------------------------------------------------
 StatusModel.ClearSummary = function (lBit)
     local lStatus = bit.clear(StatusModel.mStatus, lBit)
     if lStatus ~= StatusModel.mStatus then
@@ -4211,8 +4259,10 @@ end
 --
 --  UpdateStatusModel
 --
+--  Check all necessary values and bits to see if bits in the status
+--  model should change. This is intended to be run every cycle of the program.
+--
 ------------------------------------------------------------------------------
-
 UpdateStatusModel = function ()
     local lStatusCondition = gAccessors.mGetStatusCondition()
     -- Update the Error available bit
@@ -4285,7 +4335,6 @@ end
 --  given function returns true.
 --
 ------------------------------------------------------------------------------
-
 local WaitForEvent = function (lCheck)
     while true do
         PriorityExecute()
@@ -4321,10 +4370,7 @@ gCommandTree =
     ["*SRE"] = {mCommand = {}, mQuery = {}},
     ["*STB"] = {mQuery = {}},
     ["*WAI"] = {mCommand = {}},
-    ["ABORT"] =
-    {
-        mCommand = {mPriority = true},
-    },
+    ["ABORT"] = gSpecialCommands["ABORT"],
     ["CALCULATE"] =
     {
         ["AVERAGE"] =
@@ -6076,9 +6122,13 @@ gErrorQueue.ReadError = function ()
     end
 end
 
---[[
-    Clear removes all the errors from the error queue
---]]
+------------------------------------------------------------------------------
+--
+-- gErrorQueue.Clear
+--
+-- Clear removes all the errors from the error queue.
+--
+------------------------------------------------------------------------------
 gErrorQueue.Clear = function ()
     if table.getn(gErrorQueue) == 0 then
         return
@@ -6107,7 +6157,6 @@ gTriggerModel = {
 --  Load the measurement trigger model with user specified settings
 --
 ------------------------------------------------------------------------------
-
 gTriggerModel.InitializeTM = function()
     -- Trigger Delay Timer
     gTriggerTimer.clear()
@@ -6121,11 +6170,13 @@ gTriggerModel.InitializeTM = function()
     gAccessors.mSetTriggerTimerEnable(trigger.ON)
 
     gTM.load("Empty")
+    -- Set wait event based on trigger source
     if gInstrumentState.General.Trigger_Source.value == "EXT" then
         gTM.setblock(1, trigger.BLOCK_WAIT, trigger.EVENT_EXTERNAL, trigger.CLEAR_ENTER)
     elseif gInstrumentState.General.Trigger_Source.value == "IMM" then
         gTM.setblock(1, trigger.BLOCK_NOP)
     end
+    -- Change timing based on trigger delay auto
     if gInstrumentState.General.Trigger_Delay_Auto.value.shorthand ~= 1 then
         -- Notify trigger delay timer to start
         gTM.setblock(2, trigger.BLOCK_NOTIFY, trigger.EVENT_NOTIFY1)
@@ -6154,23 +6205,29 @@ end
 --  Initiate a new set of measurements
 --
 ------------------------------------------------------------------------------
-
 gTriggerModel.InitiateMeasurements = function()
+    -- Configure trigger model
     if not gTriggerModel.tmInitialized then
         gTriggerModel.InitializeTM()
     end
+    -- Clear the reading buffer
     gReadingMemory.clear()
+    -- Reset limit bits
     ResetLimits()
+    -- Set measuring bit and clear config change bit
     StatusModel.ClearCondition(operStatus, 9)
     StatusModel.SetCondition(operStatus, 5)
+    -- Update last measurement attributes
     gLastMeasurement.index = 1
     gLastMeasurement.value = gNan
     gLastMeasurement.units = gInstrumentState.Measure_Function.value.units
+    -- Perform auto null if needed
     local lCurrentStateVars = gInstrumentState.Measure_Function.value.stateVariables
     if lCurrentStateVars and lCurrentStateVars.Null_Value_Auto.value then
         lCurrentStateVars.Null_State.value = gInstrumentAttributes.OnOff.ON
         gRel.acquire()
     end
+    -- Initiate measurement
     gTM.initiate()
 end
 
@@ -6181,12 +6238,12 @@ end
 --  When the trigger model is completed
 --
 ------------------------------------------------------------------------------
-
 gTriggerModel.EndTriggerModel = function()
     -- Store the last measurement for DATA:LAST?
     gLastMeasurement.index = gReadingMemory.readingBuffer.endindex
     if gLastMeasurement.index == 0 then gLastMeasurement.value = gNan
     else gLastMeasurement.value = gReadingMemory.readingBuffer[gLastMeasurement.index] end
+    -- Clear measuring bit
     StatusModel.ClearCondition(operStatus, 5)
     UpdateBufferStats()
 end
@@ -6217,7 +6274,8 @@ end
 --
 -- FormatBuffer
 --
--- Formats the reading buffer for printing
+-- Formats the reading buffer for printing from lStart, lStart+lCount.
+-- Specifying remove will also delete all printed values.
 --
 -----------------------------------------------------------------------------
 local FormatBuffer = function (lStart, lCount, remove)
@@ -6227,6 +6285,7 @@ local FormatBuffer = function (lStart, lCount, remove)
     for i=1, lCount-1 do
         lFormatString = lFormatString .. "," .. FormatNumber(lBuffer.readings[math.mod(lStart+(i-1), gReadingMemory.bufferSize)+1], true)
     end
+    -- Remove all printed values
     if remove then
         gReadingMemory.lastRemoved = lBuffer.relativetimestamps[math.mod(lStart+(lCount-1-1), gReadingMemory.bufferSize)+1]
     end
@@ -6239,7 +6298,7 @@ end
 --
 -- Formats a string to be printed with a size indicator. First digit is the
 -- number of digits in the size and size is number of characters following.
--- (ex. #112 hello world!)
+-- (ex. #212 hello world!)
 --
 -----------------------------------------------------------------------------
 local FormatBlockLength = function(lString)
@@ -6256,12 +6315,17 @@ end
 --
 -----------------------------------------------------------------------------
 local ChangeMeasFunction = function(measFunction, setters)
+    -- Set the measure function
     local lInstMeasFunc = gInstrumentState.Measure_Function
     lInstMeasFunc.value = measFunction
     lInstMeasFunc.setter(lInstMeasFunc.value.DMM_Enum)
+    -- Check front/rear terminals and reset limit values
     CheckTerminals()
     ResetLimits()
+    -- Turn stats off and clear
     gInstrumentState.General.Stats_Enable.value = gInstrumentAttributes.OnOff.OFF
+    gReadingMemory.statistics.clear()
+    -- Handle units for voltage measurements
     if (gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.AC_Voltage
     or gInstrumentState.Measure_Function.value == gInstrumentAttributes.Meas_Functions.DC_Voltage) then
         gAccessors.mSetDBReference(gInstrumentState.General.DB_Reference.value)
@@ -6279,24 +6343,14 @@ local ChangeMeasFunction = function(measFunction, setters)
     gReadingMemory.clear()
     -- Iterate through measurement attibutes, checking and setting them
     setters()
-    --if lInstMeasFunc.value.stateVariables then
-    --    for lIndex, lValue in pairs(lInstMeasFunc.value.stateVariables) do
-    --        if lValue.setter then
-    --            if type(lValue.value) == "number" then
-    --                lValue.setter(lValue.value)
-    --            else
-    --                lValue.setter(lValue.value.DMM_Enum)
-    --            end
-    --        end
-    --    end
-    --end
 end
 
 ------------------------------------------------------------------------------
 --
 -- FindStartIndex
 --
--- Finds the start index of the reading buffer, excluding all deleted readings
+-- Finds the start index of the reading buffer, excluding all deleted 
+-- readings. Return the start index and the number of points in the buffer.
 --
 -----------------------------------------------------------------------------
 local FindStartIndex = function()
@@ -6323,12 +6377,13 @@ end
 -- FindAvgStartIndex
 --
 -- Finds the start index of the reading buffer for statistics, excluding all 
--- readings since last CALC:AVERAGE:CLEAR
+-- removed readings and readings since last CALC:AVERAGE:CLEAR. Returns the 
+-- start index and number of points counted in statistics.
 --
 -----------------------------------------------------------------------------
 local FindAvgStartIndex = function()
     local buffer = gReadingMemory.readingBuffer
-    local lStart = buffer.startindex
+    local lStart, lRemaining = FindStartIndex()
     if lStart == 0 then
         return 0, 0
     end
@@ -6342,7 +6397,7 @@ local FindAvgStartIndex = function()
             return
         end
     end
-    return lStart, buffer.n - lRemovedPoints
+    return lStart, lRemaining - lRemovedPoints
 end
 
 ------------------------------------------------------------------------------
@@ -6380,27 +6435,30 @@ UpdateBufferStats = function()
     for _=1, lNPoints do
         reading = buffer[lIndex]
 
+        -- Adjust min/max
         if reading < min then min = reading end
         if reading > max then max = reading end
-
+        -- Sum for average
         average = average + reading
-
+        -- Values for stdev
         Ex = Ex + (reading - K)
         Ex2 = Ex2 + math.pow(reading - K, 2)
-
+        -- Increment index
         lIndex = math.mod(lIndex, gReadingMemory.bufferSize)+1
     end
+    -- Finalize average
     average = average / lNPoints
+    -- Finalize stdev
     if lNPoints == 1 then
         sdeviation = 0
     else
         sdeviation = math.sqrt((Ex2 - math.pow(Ex, 2)/lNPoints) / (lNPoints - 1))
     end
-
+    -- Set all stat values
     stats.average = average
     stats.max = max
     stats.min = min
-    stats.ptpeak = math.abs(max-min)
+    stats.ptpeak = gMathAbs(max-min)
     stats.sdeviation = sdeviation
 end
 
@@ -6516,9 +6574,8 @@ end
 -- ABORt
 gCurrentRoot = gCommandTree["ABORT"]
 gCurrentRoot.mCommand.mExecute = function()
-    gTM.abort()
+    trigger.model.abort()
     gAbort = true
-    -- Find some way to break waitcompletes and waiting for measurements
 end
 -- FETch?
 gCurrentRoot = gCommandTree["FETCH"]
@@ -6947,6 +7004,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetCapacitance()
     gSetFunctionAttributes.SetCapacitance()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -6970,6 +7028,7 @@ gCurrentRoot.mCommand.mExecute = function()
     gResetFunctionVariables.ResetGeneral()
     gSetFunctionAttributes.SetGeneral()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
 end
 -- CONFigure:CURRent:AC [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
@@ -6984,6 +7043,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetACCurrent()
     gSetFunctionAttributes.SetACCurrent()
+    gReadingMemory.statistics.clear()
     gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
@@ -7012,6 +7072,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetDCCurrent()
     gSetFunctionAttributes.SetDCCurrent()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -7035,6 +7096,7 @@ gCurrentRoot.mCommand.mExecute = function()
     gResetFunctionVariables.ResetGeneral()
     gSetFunctionAttributes.SetGeneral()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
 end
 -- CONFigure:FREQuency [{<range>|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
@@ -7050,6 +7112,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetFrequency()
     gSetFunctionAttributes.SetFrequency()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
 end
 -- CONFigure:FRESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
@@ -7065,6 +7128,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetFResistance()
     gSetFunctionAttributes.SetFResistance()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -7092,6 +7156,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetPeriod()
     gSetFunctionAttributes.SetPeriod()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
 end
 -- CONFigure:RESistance [{<range>|AUTO|MIN|MAX|DEF} [, {<resolution>|MIN|MAX|DEF}]]
@@ -7107,6 +7172,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetResistance()
     gSetFunctionAttributes.SetResistance()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -7133,6 +7199,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gSetFunctionAttributes.SetGeneral()
     gResetFunctionVariables.ResetACVoltage()
     gSetFunctionAttributes.SetACVoltage()
+    gReadingMemory.statistics.clear()
     gReadingMemory.clear()
     ResetLimits()
     -- Set the measure range
@@ -7162,6 +7229,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetTemperature()
     gSetFunctionAttributes.SetTemperature()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
 
     gCommandTree["SENSE"]["TEMPERATURE"]["TRANSDUCER"]["TYPE"].mCommand.mExecute({lType})
@@ -7179,6 +7247,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -7206,6 +7275,7 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
     gResetFunctionVariables.ResetDCVoltage()
     gSetFunctionAttributes.SetDCVoltage()
     gReadingMemory.clear()
+    gReadingMemory.statistics.clear()
     ResetLimits()
     -- Set the measure range
     local lMeasureRange = lParameters[1]
@@ -7219,65 +7289,6 @@ gCurrentRoot.mCommand.mExecute = function(lParameters)
             gErrorQueue.Add(-222)
         end
     end
-end
-
-------------------------------------------------------------------------------
---
--- DISPlay subsystem
---
------------------------------------------------------------------------------
-
---DISPlay[:STATe] {OFF|ON}
-gCurrentRoot = gCommandTree["DISPLAY"]["STATE"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
-gCurrentRoot.mCommand.mExecute = function(lParameters)
-    local lState = lParameters[1]
-    local lDisplayState = gInstrumentState.General.Display_State
-    if lState == true then
-        lDisplayState.value = gInstrumentAttributes.Display_State.ON
-    else
-        lDisplayState.value = gInstrumentAttributes.Display_State.OFF
-    end
-    lDisplayState.setter(lDisplayState.value.DMM_Enum)
-end
---DISPlay[:STATe]?
-gCurrentRoot.mQuery.mExecute = function()
-    print(gInstrumentState.General.Display_State.value.shorthand)
-end
---DISPlay:TEXT:CLEar
-gCurrentRoot = gCommandTree["DISPLAY"]["TEXT"]["CLEAR"]
-gCurrentRoot.mCommand.mExecute = function()
-    if gDisplayTextVar then
-        display.delete(gDisplayTextVar)
-    end
-end
---DISPlay:TEXT[:DATA] "<string>"
-gCurrentRoot = gCommandTree["DISPLAY"]["TEXT"]["DATA"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseString}
-gCurrentRoot.mCommand.mExecute = function(lParameters)
-    gDisplayText = lParameters[1]
-    if gDisplayText == "" and gDisplayTextVar then
-        display.delete(gDisplayTextVar)
-    else
-        gDisplayTextVar = display.prompt(display.BUTTONS_NONE, gDisplayText)
-    end
-end
---DISPlay:TEXT[:DATA]?
-gCurrentRoot.mQuery.mExecute = function()
-    print(gDisplayText)
-end
---DISPlay:VIEW {NUMeric|HISTogram|TCHart|METer}
-gCurrentRoot = gCommandTree["DISPLAY"]["VIEW"]
-gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDisplayView}
-gCurrentRoot.mCommand.mExecute = function(lParameters)
-    local lDisplayView = lParameters[1]
-    local lDisplayVar = gInstrumentState.General.Display_View
-    lDisplayVar.value = lDisplayView
-    display.changescreen(lDisplayVar.value.DMM_Enum)
-end
---DISPlay:VIEW?
-gCurrentRoot.mQuery.mExecute = function()
-    print(gInstrumentState.General.Display_View.value.shorthand)
 end
 
 ------------------------------------------------------------------------------
@@ -7387,6 +7398,65 @@ gCurrentRoot.mQuery.mExecute = function(lParameters)
     else
         gErrorQueue.Add(-222)
     end
+end
+
+------------------------------------------------------------------------------
+--
+-- DISPlay subsystem
+--
+-----------------------------------------------------------------------------
+
+--DISPlay[:STATe] {OFF|ON}
+gCurrentRoot = gCommandTree["DISPLAY"]["STATE"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseBooleanKeywords}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lState = lParameters[1]
+    local lDisplayState = gInstrumentState.General.Display_State
+    if lState == true then
+        lDisplayState.value = gInstrumentAttributes.Display_State.ON
+    else
+        lDisplayState.value = gInstrumentAttributes.Display_State.OFF
+    end
+    lDisplayState.setter(lDisplayState.value.DMM_Enum)
+end
+--DISPlay[:STATe]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Display_State.value.shorthand)
+end
+--DISPlay:TEXT:CLEar
+gCurrentRoot = gCommandTree["DISPLAY"]["TEXT"]["CLEAR"]
+gCurrentRoot.mCommand.mExecute = function()
+    if gDisplayTextVar then
+        display.delete(gDisplayTextVar)
+    end
+end
+--DISPlay:TEXT[:DATA] "<string>"
+gCurrentRoot = gCommandTree["DISPLAY"]["TEXT"]["DATA"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseString}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    gDisplayText = lParameters[1]
+    if gDisplayText == "" and gDisplayTextVar then
+        display.delete(gDisplayTextVar)
+    else
+        gDisplayTextVar = display.prompt(display.BUTTONS_NONE, gDisplayText)
+    end
+end
+--DISPlay:TEXT[:DATA]?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gDisplayText)
+end
+--DISPlay:VIEW {NUMeric|HISTogram|TCHart|METer}
+gCurrentRoot = gCommandTree["DISPLAY"]["VIEW"]
+gCurrentRoot.mCommand.mParameters = {gParserTable.mParseDisplayView}
+gCurrentRoot.mCommand.mExecute = function(lParameters)
+    local lDisplayView = lParameters[1]
+    local lDisplayVar = gInstrumentState.General.Display_View
+    lDisplayVar.value = lDisplayView
+    display.changescreen(lDisplayVar.value.DMM_Enum)
+end
+--DISPlay:VIEW?
+gCurrentRoot.mQuery.mExecute = function()
+    print(gInstrumentState.General.Display_View.value.shorthand)
 end
 
 ------------------------------------------------------------------------------
