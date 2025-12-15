@@ -1,4 +1,4 @@
-loadandrunscript Emulation34461A
+--loadandrunscript Emulation34461A
 
 --============================================================================
 --
@@ -58,6 +58,8 @@ end
 --============================================================================
 
 local NullFunction = function () end    -- Placeholder function
+
+local gDEVMODE = true
 
 local gInitialized = false      -- Has instrument been initialized
 local gCommandTree              -- This structure will all commands including their paths and execution functions
@@ -5789,6 +5791,38 @@ gCommandTree["TRIGGER"]["DEL"]                          = gCommandTree["TRIGGER"
 gCommandTree["TRIGGER"]["SLOP"]                         = gCommandTree["TRIGGER"]["SLOPE"]
 gCommandTree["TRIGGER"]["SOUR"]                         = gCommandTree["TRIGGER"]["SOURCE"]
 
+-- DEV function
+if gDEVMODE then
+    gPrintCMDTree = function(printString, tree)
+        local fptr = file.open("/usb1/Command_Tree.txt", file.MODE_APPEND)
+        for key, value in pairs(tree) do
+            if key == "mCommand" or key == "mQuery" then
+                file.write(
+                    fptr,
+                    string.format(
+                    "%s:%s\n",
+                    printString,
+                    key
+                    )
+                )
+            else
+                gPrintCMDTree(
+                    string.format(
+                        "%s:%s",
+                        printString,
+                        key
+                    ),
+                    tree[key]
+                )  
+            end
+        end
+        file.close(fptr)
+    end
+    --gPrintCMDTree("", gCommandTree)
+    --print("DONE")
+    --exit()
+end
+
 --============================================================================
 --
 -- Error Queue
@@ -9959,7 +9993,9 @@ end
 gCurrentRoot = gCommandTree["SYSTEM"]["LOCAL"]
 gCurrentRoot.mCommand.mExecute = function()
     gTM.abort()
-    --EndEmulation()
+    if gDEVMODE then
+        EndEmulation()
+    end
 end
 -- SYSTem:PRESet
 gCurrentRoot = gCommandTree["SYSTEM"]["PRESET"]
@@ -10288,11 +10324,14 @@ gCurrentRoot = gCommandTree
 
 Initialize34461A()
 
-display.prompt(
-    display.BUTTONS_OK,
-    "Instrument emulation initialized"
-)
-beeper.beep(0.15, 680)
---Engine34461A()
+if gDEVMODE then
+    Engine34461A()
+else
+    display.prompt(
+        display.BUTTONS_OK,
+        "Instrument emulation initialized"
+    )
+    beeper.beep(0.15, 680)
+end
 
-endscript
+--endscript
